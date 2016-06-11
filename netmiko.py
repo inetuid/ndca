@@ -54,7 +54,7 @@ class ConnectHandler(object):
 		return NotImplementedError('exit_config_mode()')
 
 	def find_prompt(self, *args):
-		return self._config_client.ssh_client.shell_last_prompt(self._config_client.shell_channel)
+		return self._config_client.shell.last_prompt()
 
 	def send_command(self, command, *args):
 		return self._config_client.cli_command(command)
