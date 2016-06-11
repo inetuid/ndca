@@ -8,5 +8,5 @@ Example:
 
 import ndca
 
-with ndca.factory.Client(, snmp_community=, username=, password=) as ndca_client:
+with ndca.factory.Client(<host_or_ip>, snmp_community=<my_community>, username=<my_password>, password=<my_username>) as ndca_client:
     print ndca.client.software_version()
