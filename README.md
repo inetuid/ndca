@@ -1,4 +1,4 @@
-#yandca
+#yandc
 
 Yet Another Networked Device Connection module.
 
