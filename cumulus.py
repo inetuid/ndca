@@ -3,7 +3,7 @@ import snmp
 import ssh
 import vendor_base
 
-class Client(vendor_base.Client):
+class CL_Client(vendor_base.Client):
 	def __enter__(self):
 		return self
 
@@ -11,7 +11,7 @@ class Client(vendor_base.Client):
 		self.disconnect()
 
 	def __init__(self, *args, **kwargs):
-		super(Client, self).__init__(*args, **kwargs)
+		super(CL_Client, self).__init__(*args, **kwargs)
 
 		grouped_kwargs = self.group_kwargs(['snmp_', 'ssh_'], **kwargs)
 
@@ -51,7 +51,7 @@ class Client(vendor_base.Client):
 			self.shell.exit()
 			del self.shell
 
-		super(Client, self).disconnect()
+		super(CL_Client, self).disconnect()
 
 		if hasattr(self, '_software_version'):
 			del self._software_version

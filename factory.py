@@ -17,13 +17,13 @@ class Client(object):
 		vendor = snmp.Client(kwargs['host'], **grouped_kwargs['snmp_']).enterprise()[0]
 
 		if vendor == 'Arista':
-			return arista.Client(*args, **kwargs)
+			return arista.EOS_Client(*args, **kwargs)
 		elif vendor == 'Cisco':
-			return cisco.Client(*args, **kwargs)
+			return cisco.IOS_Client(*args, **kwargs)
 		elif vendor == 'Cumulus':
-			return cumulus.Client(*args, **kwargs)
+			return cumulus.CL_Client(*args, **kwargs)
 		elif vendor == 'Mikrotik':
-			return mikrotik.Client(*args, **kwargs)
+			return mikrotik.ROS_Client(*args, **kwargs)
 
 	def software_version(self):
 		raise NotImplementedError('software_version()')

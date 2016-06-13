@@ -13,7 +13,7 @@ except ImportError:
 else:
 	have_rosapi = True
 
-class Client(vendor_base.Client):
+class ROS_Client(vendor_base.Client):
 	def __enter__(self):
 		return self
 
@@ -21,7 +21,7 @@ class Client(vendor_base.Client):
 		self.disconnect()
 
 	def __init__(self, *args, **kwargs):
-		super(Client, self).__init__(*args, **kwargs)
+		super(ROS_Client, self).__init__(*args, **kwargs)
 
 		grouped_kwargs = self.group_kwargs(['snmp_', 'ssh_', 'rosapi_'], **kwargs)
 
@@ -78,7 +78,7 @@ class Client(vendor_base.Client):
 			self.shell.exit()
 			del self.shell
 
-		super(Client, self).disconnect()
+		super(ROS_Client, self).disconnect()
 
 		if hasattr(self, '_software_version'):
 			del self._software_version

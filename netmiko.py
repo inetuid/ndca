@@ -25,15 +25,15 @@ class ConnectHandler(object):
 			client_kwargs['ssh_port'] = kwargs['port']
 
 		if kwargs['device_type'] == 'arista':
-			self._config_client = arista.Client(**client_kwargs)
+			self._config_client = arista.EOS_Client(**client_kwargs)
 		elif kwargs['device_type'] == 'cisco_ios':
 			self._config_client = cisco.IOS_Client(**client_kwargs)
 		elif kwargs['device_type'] == 'cisco_xr':
 			self._config_client = cisco.XR_Client(**client_kwargs)
 		elif kwargs['device_type'] == 'cumulus_linux':
-			self._config_client = cumulus.Client(**client_kwargs)
+			self._config_client = cumulus.CL_Client(**client_kwargs)
 		elif kwargs['device_type'] == 'mikrotik':
-			self._config_client = mikrotik.Client(**client_kwargs)
+			self._config_client = mikrotik.ROS_Client(**client_kwargs)
 		else:
 			raise ValueError('Device type ' + kwargs['device_type'] + ' not supported')
 
