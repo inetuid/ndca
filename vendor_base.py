@@ -1,5 +1,9 @@
 import warnings
 
+class Client_Exception(Exception):
+	pass
+
+
 class Client(object):
 	def __init__(self, *args, **kwargs):
 		assert 'host' in kwargs, 'No host specified'
@@ -38,9 +42,13 @@ class Client(object):
 		return grouped_kwargs
 
 	def snmp_get(self, oid):
+		if not self.can_snmp():
+			raise Client_Exception('No SNMP client')
 		return self.snmp_client.get_oid(self.snmp_client.format_oid(oid))
 
 	def snmp_walk(self, oid):
+		if not self.can_snmp():
+			raise Client_Exception('No SNMP client')
 		return self.snmp_client.walk_oids([self.snmp_client.format_oid(oid)])
 
 	def software_version(self):

@@ -60,7 +60,7 @@ class ROS_Client(vendor_base.Client):
 
 	def cli_command(self, *args, **kwargs):
 		return self.ssh_command(*args, **kwargs)
-		raise Exception('No CLI handler')
+		raise vendor_base.Client_Exception('No CLI handler')
 
 	def can_rosapi(self):
 		if hasattr(self, '_rosapi'):
@@ -89,27 +89,99 @@ class ROS_Client(vendor_base.Client):
 		return self.ssh_command('/export verbose')
 
 	def get_interface_config(self, if_name):
-		cli_output = self.ssh_command(':put [/interface get ' + if_name + ' type]')
-		if cli_output == list():
-			return cli_output
-
-		if_type = cli_output[0]
-
+		if_type = self.interface_type(if_name)
 		if if_type == 'ether':
 			if_type = 'ethernet'
 		elif if_type == 'pppoe-out':
 			if_type = 'pppoe-client'
-
-		return self.ssh_command(':put [/interface ' + if_type + ' print as-value where name="' + if_name + '"]')
+		terse_output = self.ssh_command(':put [/interface {} print terse without-paging where name="{}"]'.format(if_type, if_name))
+		return self.print_to_values_structured(terse_output)
 
 	def in_configure_mode(self, *args, **kwargs):
 		return False
+
+	def index_values(self, values, key='index'):
+		values_indexed = {}
+		for v in values:
+			if key in v:
+				if not v[key] in values_indexed:
+					values_indexed[v[key]] = []
+				values_indexed[v[key]].append(v)
+			else:
+				raise vendor_base.Client_Exception('Key not seen')
+		return values_indexed
+
+	def interface_type(self, if_name):
+		terse_output = self.ssh_command('/interface print terse without-paging where name="{}"'.format(if_name))
+#		terse_output.pop()
+		return self.print_to_values_structured(terse_output)[0].get('type', None)
+
+	def interfaces(self):
+		if self.can_snmp():
+			return [str(v.get('ifName')) for k, v in self.snmp_client.interfaces().iteritems()]
+		return [v.get('name') for v in self.print_to_values_structured(self.ssh_command('/interface print terse without-paging'))]
+
+	@staticmethod
+	def print_concat(print_output):
+		concat_output = []
+		for line in print_output:
+			if not len(line):
+				continue
+#			if line.startswith('       '):
+			if line.startswith('   '):
+				concat_output[-1] = ' '.join([concat_output[-1], line.lstrip().rstrip()])
+			else:
+				if line.find(';;; ') != -1:
+					line = line.replace(';;; ', 'comment=')
+				concat_output.append(line.lstrip().rstrip())
+		return concat_output
+
+	@staticmethod
+	def print_to_values(print_output):
+		as_values = {}
+		for line in print_output:
+			if not len(line):
+				continue
+			key, value = line.split(':', 1)
+			if key in as_values:
+				raise vendor_base.Client_Exception('Key already seen - [{}]'.format(key))
+			as_values[key.lstrip().rstrip()] = value.lstrip().rstrip()
+		return as_values
+
+	@staticmethod
+	def print_to_values_structured(print_output):
+		as_values = []
+		for line in print_output:
+			line_parts = line.lstrip().rstrip().split()
+			if not len(line_parts):
+				continue
+			temp = {}
+			if line_parts[0].isdigit():
+				temp['index'] = line_parts.pop(0)
+			else:
+				raise vendor_base.Client_Exception(line)
+			if line_parts[0].find('=') == -1:
+				temp['flags'] = line_parts.pop(0)
+			last_key = None
+			for part in line_parts:
+				if part.find('=') != -1:
+					key, value = part.split('=', 1)
+					temp[key] = value
+					last_key = key
+				elif last_key is not None:
+					temp[last_key] = ' '.join([temp[last_key], part])
+				else:
+					raise vendor_base.Client_Exception(part)
+			as_values.append(temp)
+		return as_values
 
 	def software_version(self):
 		if not hasattr(self, '_software_version'):
 			self._software_version = None
 			if self.can_snmp():
 				self._software_version = self.snmp_client.os_version()
+			elif self.can_ssh():
+				self._software_version = self.print_to_values(self.ssh_command('/system resource print without-paging')).get('version', None)
 		return self._software_version
 
 	def ssh_command(self, *args, **kwargs):
@@ -119,28 +191,46 @@ class ROS_Client(vendor_base.Client):
 			raise ValueError('No shell channel')
 		return self.shell.command(*args, **kwargs)
 
-	@staticmethod
-	def values_decode(as_values):
-		decoded_values = []
+	def system_package_enabled(self, package):
+		terse_output = self.ssh_command('/system package print terse without-paging')
+#		terse_output.pop()
+		terse_values_indexed = self.index_values(self.print_to_values_structured(terse_output), 'name')
+		if package in terse_values_indexed:
+			return terse_values_indexed[package][0].get('flags', '').find('X') == -1
+		return False
 
-		temp_list = []
-		if as_values.startswith('.id=*'):
-			for as_value in as_values.split('.id=*'):
-				if len(as_value):
-					as_value = '.id=*' + as_value.rstrip(';')
-				temp_list.append(as_value)
-		else:
-			temp_list.append(as_values)
+	def to_seconds(self, time_format):
+		seconds = minutes = hours = days = weeks = 0
 
-		for row in csv.reader(temp_list, delimiter=';'):
-			if len(row):
-				temp_dict = {}
-				for key_value in row:
-					k, v = key_value.split('=', 2)
-					temp_dict[unicode(k)] = v
-				decoded_values.append(temp_dict)
+		n = ''
+		for c in time_format:
+			if c.isdigit():
+				n += c
+				continue
+			if c == 's':
+				seconds = int(n)
+			elif c == 'm':
+				minutes = int(n)
+			elif c == 'h':
+				hours = int(n)
+			elif c == 'd':
+				days = int(n)
+			elif c == 'w':
+				weeks = int(n)
+			else:
+				raise ValueError('Invalid specifier - [{}]'.format(c))
+			n = ''
 
-		return decoded_values
+		seconds += (minutes * 60)
+		seconds += (hours * 3600)
+		seconds += (days * 86400)
+		seconds += (weeks * 604800)
+
+		return seconds
+
+	def to_seconds_date_time(self, date_time):
+#jun/10/2016 16:56:03
+		return date_time + '*'
 
 	@staticmethod
 	def vendor():

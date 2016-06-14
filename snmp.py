@@ -170,7 +170,7 @@ class Client(object):
 
 	def format_oid(self, oid):
 		if isinstance(oid, str):
-			return tuple(map(int, oid.split('.')))
+			return tuple(map(int, oid.lstrip('.').split('.')))
 		elif isinstance(oid, (int, tuple)):
 			raise TypeError
 		else:
@@ -200,7 +200,7 @@ class Client(object):
 			raise GetError(errorIndication)
 		else:
 			if errorStatus:
-				raise GetError(errorStatus)
+				raise GetError(snmp_oid)
 			else :
 				oid, value = varBinds[0]
 				if oid != snmp_oid:
