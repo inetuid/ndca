@@ -427,6 +427,8 @@ class Client(object):
 		return self.get_oid((1, 3, 6, 1, 2, 1, 1, 7, 0))
 
 	def walk_oids(self, oids):
+		assert isinstance(oids, list)
+
 		errorIndication, errorStatus, errorIndex, varBindTable = cmdgen.CommandGenerator().nextCmd(
 			self._authdata,
 			self._transport,
@@ -451,6 +453,9 @@ class Client(object):
 		return None
 
 	def _table_helper(self, base_oid, table_columns, column_names):
+		assert isinstance(table_columns, dict)
+		assert isinstance(column_names, list)
+
 		if column_names[0] == '*':
 			column_names = [k for k, v in table_columns.iteritems()]
 

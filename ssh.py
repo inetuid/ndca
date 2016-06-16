@@ -37,6 +37,7 @@ class Client(object):
 		connect_timeout = kwargs.get('timeout', 10)
 
 #		paramiko.common.logging.basicConfig(level=paramiko.common.DEBUG)
+		paramiko.common.logging.basicConfig(level=paramiko.common.CRITICAL)
 
 		try:
 			sock = socket.create_connection((host, tcp_port), connect_timeout)
@@ -82,7 +83,7 @@ class Client(object):
 		chan.set_combine_stderr(True)
 		chan.exec_command(command)
 		output = chan.makefile('rb')
-		return [s.rstrip('\n') for s in output.readlines()]
+		return [s.rstrip('\r\n') for s in output.readlines()]
 
 	def on_connect(self, paramiko):
 		pass
@@ -102,8 +103,8 @@ class Shell(object):
 
 		self.channel = ssh_client.channel()
 		self.channel.settimeout(0.2)
-		self.channel.set_combine_stderr(True)
-		self.channel.get_pty(terminal_type, 320, 80)
+#		self.channel.set_combine_stderr(True)
+		self.channel.get_pty(terminal_type, 160, 80)
 		self.channel.invoke_shell()
 
 		(banner, prompt_retries) = self.read_until_prompt()
@@ -112,15 +113,15 @@ class Shell(object):
 				raise SSH_Exception('Cannot auto-detect prompt')
 			timeout_prompt = banner.pop()
 			self.prompt.add_prompt(timeout_prompt)
-			self.last_prompt(timeout_prompt)
-			self.on_prompt(timeout_prompt)
+			self.command('\n', 5)
+#			self.last_prompt(timeout_prompt)
+#			self.on_prompt(timeout_prompt)
 		self.on_banner(banner)
 
 	def command(self, command, prompt_retries=40):
 		send_command = command.rstrip('\r\n')
 		if self.channel.send(send_command + '\r') != (len(send_command) + 1):
 			raise CommandError('Did not send all of command')
-
 		if prompt_retries:
 			while range(10, 0, -1):
 				raw_output = self._gets()
@@ -131,8 +132,10 @@ class Shell(object):
 					break
 			else:
 				raise CommandError('Command not echoed')
-
-		return self.read_until_prompt(prompt_retries)[0]
+		output, retries_left = self.read_until_prompt(prompt_retries)
+		if prompt_retries != 0 and retries_left == 0:
+			raise CommandError('Prompt not seen')
+		return output
 
 	def exit(self, exit_command='exit'):
 		self.command(exit_command, 0)

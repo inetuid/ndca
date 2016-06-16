@@ -30,7 +30,7 @@ class Client(object):
 			del self.ssh_client
 
 	@staticmethod
-	def group_kwargs(groups, **kwargs):
+	def group_kwargs(*groups, **kwargs):
 		grouped_kwargs = {}
 		for key, value in kwargs.iteritems():
 			for group in groups:

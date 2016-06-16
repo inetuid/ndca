@@ -1,9 +1,7 @@
 import re
-import snmp
-import ssh
-import vendor_base
+import yandc
 
-class IOS_Client(vendor_base.Client):
+class IOS_Client(yandc.vendor_base.Client):
 	def __enter__(self):
 		return self
 
@@ -13,7 +11,7 @@ class IOS_Client(vendor_base.Client):
 	def __init__(self, *args, **kwargs):
 		super(IOS_Client, self).__init__(*args, **kwargs)
 
-		grouped_kwargs = self.group_kwargs(['snmp_', 'ssh_'], **kwargs)
+		grouped_kwargs = self.group_kwargs('snmp_', 'ssh_', **kwargs)
 
 		if 'snmp_' in grouped_kwargs:
 			snmp_client_ = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_'])
@@ -135,19 +133,19 @@ class IOS_Client(vendor_base.Client):
 		return 'Cisco_IOS'
 
 
-class SNMP_Client(snmp.Client):
+class SNMP_Client(yandc.snmp.Client):
 	def __init__(self, *args, **kwargs):
 		super(SNMP_Client, self).__init__(*args, **kwargs)
 
 	def os_version(self):
-		re_match = re.match(r'^Arista Networks EOS version (\S+) ', self.sysDescr())
-		if re_match:
+		re_match = re.match(r'THING GOES HERE version (\S+) ', self.sysDescr())
+		if re_match is not None:
 			return re_match.groups(0)[0]
 
 		return None
 
 
-class SSH_Client(ssh.Client):
+class SSH_Client(yandc.ssh.Client):
 	def __init__(self, *args, **kwargs):
 		super(SSH_Client, self).__init__(*args, **kwargs)
 
@@ -155,7 +153,7 @@ class SSH_Client(ssh.Client):
 		return super(SSH_Client, self).on_shell_output_line(*args, **kwargs).rstrip('\r').lstrip('\r')
 
 	def shell(self, prompt=None, *args):
-		generic_prompt = self.regexp_prompt(r'^.+[#>]$')
+		generic_prompt = self.regexp_prompt(r'.+[#>]$')
 
 		if prompt is None:
 			shell_channel = super(SSH_Client, self).shell(generic_prompt, *args)
@@ -163,16 +161,17 @@ class SSH_Client(ssh.Client):
 			shell_channel = super(SSH_Client, self).shell(prompt, *args)
 			self.shell_add_prompt(shell_channel, generic_prompt)
 
+		shell_channel.set_combine_stderr(True)
 		self.shell_command(shell_channel, 'terminal length 0')
 		self.shell_command(shell_channel, 'terminal no monitor')
 		self.shell_command(shell_channel, 'terminal width 160')
 
-		self.shell_add_prompt(shell_channel, self.regexp_prompt(r'^.+\(config[^\)]*\)#'))
+		self.shell_add_prompt(shell_channel, self.regexp_prompt(r'.+\(config[^\)]*\)#$'))
 
 		return shell_channel
 
 
-class XR_Client(vendor_base.Client):
+class XR_Client(yandc.vendor_base.Client):
 	def __enter__(self):
 		return self
 

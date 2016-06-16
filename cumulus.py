@@ -1,9 +1,7 @@
 import re
-import snmp
-import ssh
-import vendor_base
+import yandc
 
-class CL_Client(vendor_base.Client):
+class CL_Client(yandc.vendor_base.Client):
 	def __enter__(self):
 		return self
 
@@ -13,7 +11,7 @@ class CL_Client(vendor_base.Client):
 	def __init__(self, *args, **kwargs):
 		super(CL_Client, self).__init__(*args, **kwargs)
 
-		grouped_kwargs = self.group_kwargs(['snmp_', 'ssh_'], **kwargs)
+		grouped_kwargs = self.group_kwargs('snmp_', 'ssh_', **kwargs)
 
 		if 'snmp_' in grouped_kwargs:
 			snmp_client = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_'])
@@ -34,7 +32,7 @@ class CL_Client(vendor_base.Client):
 
 			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
 
-			shell_prompt = ssh.ShellPrompt(ssh.ShellPrompt.regexp_prompt(r'^[^@]+@[^\$]+\$ '))
+			shell_prompt = yandc.ssh.ShellPrompt(yandc.ssh.ShellPrompt.regexp_prompt(r'[^@]+@[^\$]+\$ '))
 			if self.can_snmp() and 'username' in grouped_kwargs['ssh_']:
 				shell_prompt.add_prompt(grouped_kwargs['ssh_']['username'] + '@' + self.snmp_client.sysName() + '$ ')
 
@@ -86,14 +84,14 @@ class CL_Client(vendor_base.Client):
 		return 'Cumulus'
 
 
-class SNMP_Client(snmp.Client):
+class SNMP_Client(yandc.snmp.Client):
 	pass
 
 
-class SSH_Client(ssh.Client):
+class SSH_Client(yandc.ssh.Client):
 	pass
 
 
-class SSH_Shell(ssh.Shell):
+class SSH_Shell(yandc.ssh.Shell):
 	def exit(self):
 		return super(SSH_Shell, self).exit('logout')

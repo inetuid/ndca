@@ -1,8 +1,7 @@
 import csv
 import re
-import snmp
-import ssh
-import vendor_base
+import time
+import yandc
 
 have_rosapi = False
 
@@ -13,7 +12,7 @@ except ImportError:
 else:
 	have_rosapi = True
 
-class ROS_Client(vendor_base.Client):
+class ROS_Client(yandc.vendor_base.Client):
 	def __enter__(self):
 		return self
 
@@ -23,7 +22,7 @@ class ROS_Client(vendor_base.Client):
 	def __init__(self, *args, **kwargs):
 		super(ROS_Client, self).__init__(*args, **kwargs)
 
-		grouped_kwargs = self.group_kwargs(['snmp_', 'ssh_', 'rosapi_'], **kwargs)
+		grouped_kwargs = self.group_kwargs('snmp_', 'ssh_', 'rosapi_', **kwargs)
 
 		if 'snmp_' in grouped_kwargs:
 			snmp_client = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_'])
@@ -46,7 +45,7 @@ class ROS_Client(vendor_base.Client):
 			if not 'password' in grouped_kwargs['ssh_'] and 'password' in kwargs:
 				grouped_kwargs['ssh_']['password'] = kwargs['password']
 
-			shell_prompt = ssh.ShellPrompt(ssh.ShellPrompt.regexp_prompt(r'^\[[^\@]+\@[^\]]+\] > $'))
+			shell_prompt = yandc.ssh.ShellPrompt(yandc.ssh.ShellPrompt.regexp_prompt(r'\[[^\@]+\@[^\]]+\] > $'))
 
 			if 'username' in grouped_kwargs['ssh_']:
 				original_username = grouped_kwargs['ssh_']['username']
@@ -57,6 +56,7 @@ class ROS_Client(vendor_base.Client):
 
 			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
 			self.shell = SSH_Shell(self.ssh_client, shell_prompt)
+			self.shell.channel.set_combine_stderr(True)
 
 	def cli_command(self, *args, **kwargs):
 		return self.ssh_command(*args, **kwargs)
@@ -149,7 +149,7 @@ class ROS_Client(vendor_base.Client):
 		return as_values
 
 	@staticmethod
-	def print_to_values_structured(print_output):
+	def Xprint_to_values_structured(print_output):
 		as_values = []
 		for line in print_output:
 			line_parts = line.lstrip().rstrip().split()
@@ -162,6 +162,41 @@ class ROS_Client(vendor_base.Client):
 				raise vendor_base.Client_Exception(line)
 			if line_parts[0].find('=') == -1:
 				temp['flags'] = line_parts.pop(0)
+			last_key = None
+			for part in line_parts:
+				if part.find('=') != -1:
+					key, value = part.split('=', 1)
+					temp[key] = value
+					last_key = key
+				elif last_key is not None:
+					temp[last_key] = ' '.join([temp[last_key], part])
+				else:
+					raise vendor_base.Client_Exception(part)
+			as_values.append(temp)
+		return as_values
+
+	@staticmethod
+	def print_to_values_structured(print_output):
+		as_values = []
+		for line in print_output:
+			line_parts = line.lstrip().rstrip().split()
+			if not len(line_parts):
+				continue
+			temp = {
+				'index': None,
+				'flags': ''
+			}
+			if line_parts[0].isdigit():
+				temp['index'] = line_parts.pop(0)
+			else:
+				raise vendor_base.Client_Exception(line)
+			while True:
+				part = line_parts.pop(0)
+				if part.find('=') == -1:
+					temp['flags'] += part
+				else:
+					line_parts.insert(0, part)
+					break
 			last_key = None
 			for part in line_parts:
 				if part.find('=') != -1:
@@ -229,15 +264,19 @@ class ROS_Client(vendor_base.Client):
 		return seconds
 
 	def to_seconds_date_time(self, date_time):
-#jun/10/2016 16:56:03
-		return date_time + '*'
+		try:
+			time_then = time.strptime(date_time, '%b/%d/%Y %H:%M:%S')
+		except (TypeError, ValueError) as e:
+			return date_time
+		time_now = time.time()
+		return int(time_now - time.mktime(time_then))
 
 	@staticmethod
 	def vendor():
 		return 'Mikrotik'
 
 
-class SNMP_Client(snmp.Client):
+class SNMP_Client(yandc.snmp.Client):
 	def fw_version(self):
 		return self.get_oid(self.format_oid('1.3.6.1.4.1.14988.1.1.7.4.0'))
 
@@ -245,11 +284,11 @@ class SNMP_Client(snmp.Client):
 		return str(self.get_oid(self.format_oid('1.3.6.1.4.1.14988.1.1.4.4.0')))
 
 
-class SSH_Client(ssh.Client):
+class SSH_Client(yandc.ssh.Client):
 	pass
 
 
-class SSH_Shell(ssh.Shell):
+class SSH_Shell(yandc.ssh.Shell):
 	def exit(self):
 		return super(SSH_Shell, self).exit('/quit')
 

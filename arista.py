@@ -1,8 +1,6 @@
 import json
 import re
-import snmp
-import ssh
-import vendor_base
+import yandc
 
 have_pyeapi = False
 
@@ -13,7 +11,7 @@ except ImportError:
 else:
 	have_pyeapi = True
 
-class EOS_Client(vendor_base.Client):
+class EOS_Client(yandc.vendor_base.Client):
 	def __enter__(self):
 		return self
 
@@ -23,14 +21,14 @@ class EOS_Client(vendor_base.Client):
 	def __init__(self, *args, **kwargs):
 		super(EOS_Client, self).__init__(*args, **kwargs)
 
-		grouped_kwargs = self.group_kwargs(['snmp_', 'ssh_', 'eapi_'], **kwargs)
+		grouped_kwargs = self.group_kwargs('snmp_', 'ssh_', 'eapi_', **kwargs)
 
 		if 'snmp_' in grouped_kwargs:
 			snmp_client = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_'])
 			try:
 				if not snmp_client.sysObjectID().startswith('1.3.6.1.4.1.30065.1'):
 					raise ValueError('Not an Arista device')
-			except snmp.GetError:
+			except yandc.snmp.GetError:
 				pass
 			else:
 				self.snmp_client = snmp_client
@@ -58,10 +56,11 @@ class EOS_Client(vendor_base.Client):
 
 			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
 
-			shell_prompt = ssh.ShellPrompt(ssh.ShellPrompt.regexp_prompt(r'^.+[#>]$'))
-			shell_prompt.add_prompt(ssh.ShellPrompt.regexp_prompt(r'^.+\(config[^\)]*\)#'))
+			shell_prompt = yandc.ssh.ShellPrompt(yandc.ssh.ShellPrompt.regexp_prompt(r'.+[#>]$'))
+			shell_prompt.add_prompt(yandc.ssh.ShellPrompt.regexp_prompt(r'.+\(config[^\)]*\)#$'))
 
 			self.shell = SSH_Shell(self.ssh_client, shell_prompt)
+			self.shell.channel.set_combine_stderr(True)
 			self.shell.command('terminal dont-ask')
 			self.shell.command('terminal length 0')
 			self.shell.command('no terminal monitor')
@@ -131,7 +130,7 @@ class EOS_Client(vendor_base.Client):
 		if hasattr(self, '_software_version'):
 			del self._software_version
 
-	@ssh.debug
+	@yandc.ssh.debug
 	def eapi_command(self, *args, **kwargs):
 		if self.can_eapi():
 			if 'encoding' in kwargs and kwargs['encoding'] == 'json':
@@ -218,18 +217,18 @@ class EOS_Client(vendor_base.Client):
 		return 'Arista'
 
 
-class SNMP_Client(snmp.Client):
+class SNMP_Client(yandc.snmp.Client):
 	def os_version(self):
-		re_match = re.match(r'^Arista Networks EOS version (.+) running on an Arista Networks (.+)$', self.sysDescr())
-		if re_match:
+		re_match = re.match(r'Arista Networks EOS version (.+) running on an Arista Networks (.+)$', self.sysDescr())
+		if re_match is not None:
 			return re_match.groups(0)[0]
 		return None
 
 
-class SSH_Client(ssh.Client):
+class SSH_Client(yandc.ssh.Client):
 	pass
 
 
-class SSH_Shell(ssh.Shell):
+class SSH_Shell(yandc.ssh.Shell):
 	def exit(self):
 		return super(SSH_Shell, self).exit('logout')
