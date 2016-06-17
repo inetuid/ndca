@@ -16,6 +16,26 @@ class SNMP_Exception(Exception):
 class GetError(SNMP_Exception):
 	pass
 
+oid_lookup = {
+	'bgp4PathAttrEntry': (1, 3, 6, 1, 2, 1, 15, 6, 1),
+	'bgpPeerEntry': (1, 3, 6, 1, 2, 1, 15, 3, 1),
+	'dot1dTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 4, 3, 1),
+	'dot1dBasePortEntry': (1, 3, 6, 1, 2, 1, 17, 1, 4, 1),
+	'dot1qVlanCurrentEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 4, 2, 1),
+	'entPhysicalEntry': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1),
+	'entPhysicalMfgName': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1, 12, 1),
+	'ifEntry': (1, 3, 6, 1, 2, 1, 2, 2, 1),
+	'ifXEntry': (1, 3, 6, 1, 2, 1, 31, 1, 1, 1),
+	'inetCidrRouteEntry': (1, 3, 6, 1, 2, 1, 4, 24, 7, 1),
+	'ipAddressEntry': (1, 3, 6, 1, 2, 1, 4, 34, 1),
+	'ipAddressPrefixEntry': (1, 3, 6, 1, 2, 1, 4, 32, 1),
+	'ipNetToMediaEntry': (1, 3, 6, 1, 2, 1, 4, 22, 1),
+	'ipRouteEntry': (1, 3, 6, 1, 2, 1, 4, 21, 1),
+	'lldpLocPortEntry': (1, 0, 8802, 1, 1, 2, 1, 3, 7, 1),
+	'lldpRemEntry': (1, 0, 8802, 1, 1, 2, 1, 4, 1, 1),
+	'sysOREntry': (1, 3, 6, 1, 2, 1, 1, 9, 1),
+}
+
 class Client(object):
 	def __enter__(self):
 		return self
@@ -34,8 +54,8 @@ class Client(object):
 		return self.get_oid((1, 3, 6, 1, 2, 1, 15, 2, 0))
 
 	def bgpPeerTable(self, column_names):
-		bgp_peer_table = self._table_helper(
-			(1, 3, 6, 1, 2, 1, 15, 3, 1),
+		bgp_peer_table = self._table_entries(
+			oid_lookup['bgpPeerEntry'],
 			{
 				'bgpPeerIdentifier': 1,
 				'bgpPeerState': 2,
@@ -60,7 +80,7 @@ class Client(object):
 				'bgpPeerKeepAliveConfigured': 21,
 				'bgpPeerMinASOriginationInterval': 22,
 				'bgpPeerMinRouteAdvertisementInterval': 23,
-				'bgpPeerInUpdateElapsedTime': 24
+				'bgpPeerInUpdateElapsedTime': 24,
 			},
 			column_names
 		)
@@ -73,8 +93,8 @@ class Client(object):
 		return bgp_peer_table
 
 	def bgp4PathAttrTable(self, column_names):
-		return self._table_helper(
-			(1, 3, 6, 1, 2, 1, 15, 6, 1),
+		return self._table_entries(
+			oid_lookup['bgp4PathAttrEntry'],
 			{
 				'bgp4PathAttrPeer': 1,
 				'bgp4PathAttrIpAddrPrefixLen': 2,
@@ -89,42 +109,42 @@ class Client(object):
 				'bgp4PathAttrAggregatorAddr': 11,
 				'bgp4PathAttrCalcLocalPref': 12,
 				'bgp4PathAttrBest': 13,
-				'bgp4PathAttrUnknown': 14
+				'bgp4PathAttrUnknown': 14,
 			},
 			column_names
 		)
 
 	@staticmethod
-	def decode_bgpPeerAdminStatus(bgp_peeradminstatus):
+	def decode_bgpPeerAdminStatus(decode_value):
 		admin_status = {
 			1: 'stop',
-			2: 'start'
+			2: 'start',
 		}
-		return admin_status.get(bgp_peeradminstatus, '')
+		return admin_status.get(decode_value, '')
 
 	@staticmethod
-	def decode_bgpPeerState(bgp_peeradminstatus):
+	def decode_bgpPeerState(decode_value):
 		peer_state = {
 			1: 'idle',
 			2: 'connect',
 			3: 'active',
 			4: 'opensent',
 			5: 'openconfirm',
-			6: 'established'
+			6: 'established',
 		}
-		return peer_state.get(bgp_peeradminstatus, '')
+		return peer_state.get(decode_value, '')
 
 	@staticmethod
-	def decode_ifAdminStatus(if_adminstatus):
+	def decode_ifAdminStatus(decode_value):
 		admin_status = {
 			1: 'up',
 			2: 'down',
-			3: 'testing'
+			3: 'testing',
 		}
-		return admin_status.get(if_adminstatus, '')
+		return admin_status.get(decode_value, '')
 
 	@staticmethod
-	def decode_ifOperStatus(if_operstatus):
+	def decode_ifOperStatus(decode_value):
 		oper_status = {
 			1: 'up',
 			2: 'down',
@@ -134,7 +154,63 @@ class Client(object):
 			6: 'notPresent',
 			7: 'lowerLayerDown',
 		}
-		return oper_status.get(if_operstatus, '')
+		return oper_status.get(decode_value, '')
+
+	def decode_PhysicalClass(decode_value):
+		physical_class = {
+			1: 'other',
+			2: 'unknown',
+			3: 'chassis',
+			4: 'backplane',
+			5: 'container',
+			6: 'powerSupply',
+			7: 'fan',
+			8: 'sensor',
+			9: 'module',
+			10: 'port',
+			11: 'stack',
+			12: 'cpu',
+		}
+		return physical_class.get(decode_value, '')
+
+	def dot1dBasePortTable(self, column_names):
+		return self._table_entries(
+			oid_lookup['dot1dBasePortEntry'],
+			{
+				'dot1dBasePort': 1,
+				'dot1dBasePortIfIndex': 2,
+				'dot1dBasePortCircuit': 3,
+				'dot1dBasePortBasePortDelayExceededDiscards': 4,
+				'dot1dBasePortBasePortMtuExceededDiscards': 5,
+			},
+			column_names
+		)
+
+	def dot1dTpFdbTable(self, column_names):
+		return self._table_entries(
+			oid_lookup['dot1dTpFdbEntry'],
+			{
+				'dot1dTpFdbAddress': 1,
+				'dot1dTpFdbPort': 2,
+				'dot1dTpFdbStatus': 3,
+			},
+			column_names
+		)
+
+	def dot1qVlanCurrentTable(self, column_names):
+		return self._table_entries(
+			oid_lookup['dot1qVlanCurrentEntry'],
+			{
+				'dot1qVlanTimeMark': 1,
+				'dot1qVlanIndex': 2,
+				'dot1qVlanFdbId': 3,
+				'dot1qVlanCurrentEgressPorts': 4,
+				'dot1qVlanCurrentUntaggedPorts': 5,
+				'dot1qVlanStatus': 6,
+				'dot1qVlanCreationTime': 7,
+			},
+			column_names
+		)
 
 	def disconnect(self):
 		if hasattr(self, '_authdata'):
@@ -147,32 +223,60 @@ class Client(object):
 	def enterprise(self):
 		_sysObjectID = self.sysObjectID()
 
-		vendor = None;
-		if _sysObjectID.startswith('1.3.6.1.4.1.2544.1'):
-			vendor = 'Adva'
-		elif _sysObjectID.startswith('1.3.6.1.4.1.30065.1'):
-			vendor = 'Arista'
-		elif _sysObjectID.startswith('1.3.6.1.4.1.9 1'):
-			vendor = 'Cisco'
-		elif _sysObjectID.startswith('1.3.6.1.4.1.40310'):
-			vendor = 'Cumulus'
-		elif _sysObjectID.startswith('1.3.6.1.4.1.1991.1'):
-			vendor = 'Foundry'
-		elif _sysObjectID.startswith('1.3.6.1.4.1.2636.1'):
-			vendor = 'Juniper'
-		elif _sysObjectID.startswith('1.3.6.1.4.1.14988.1'):
-			vendor = 'Mikrotik'
-		elif _sysObjectID.startswith('1.3.6.1.4.1.2352.1'):
-			vendor = 'Redback'
-		elif _sysObjectID.startswith('1.3.6.1.4.1.890.1'):
-			vendor = 'Zyxel'
+		vendor = self.get_oid(oid_lookup['entPhysicalMfgName'])
+		if vendor == '':
+			if _sysObjectID.startswith('1.3.6.1.4.1.2544.1'):
+				vendor = 'Adva'
+			elif _sysObjectID.startswith('1.3.6.1.4.1.30065.1'):
+				vendor = 'Arista'
+			elif _sysObjectID.startswith('1.3.6.1.4.1.9 1'):
+				vendor = 'Cisco'
+			elif _sysObjectID.startswith('1.3.6.1.4.1.40310'):
+				vendor = 'Cumulus'
+			elif _sysObjectID.startswith('1.3.6.1.4.1.1991.1'):
+				vendor = 'Foundry'
+			elif _sysObjectID.startswith('1.3.6.1.4.1.2636.1'):
+				vendor = 'Juniper'
+			elif _sysObjectID.startswith('1.3.6.1.4.1.14988.1'):
+				vendor = 'Mikrotik'
+			elif _sysObjectID.startswith('1.3.6.1.4.1.2352.1'):
+				vendor = 'Redback'
+			elif _sysObjectID.startswith('1.3.6.1.4.1.890.1'):
+				vendor = 'Zyxel'
 		return vendor, _sysObjectID
 
+	def entPhysicalTable(self, column_names):
+		return self._table_entries(
+			oid_lookup['entPhysicalEntry'],
+			{
+				'entPhysicalIndex': 1,
+				'entPhysicalDescr': 2,
+				'entPhysicalVendorType': 3,
+				'entPhysicalContainedIn': 4,
+				'entPhysicalClass': 5,
+				'entPhysicalParentRelPos': 6,
+				'entPhysicalName': 7,
+				'entPhysicalHardwareRev': 8,
+				'entPhysicalFirmwareRev': 9,
+				'entPhysicalSoftwareRev': 10,
+				'entPhysicalSerialNum': 11,
+				'entPhysicalMfgName': 12,
+				'entPhysicalModelName': 13,
+				'entPhysicalAlias': 14,
+				'entPhysicalAssetID': 15,
+				'entPhysicalIsFRU': 16,
+				'entPhysicalMfgDate': 17,
+				'entPhysicalUris': 18,
+			},
+			column_names
+		)
 	def format_oid(self, oid):
 		if isinstance(oid, str):
 			return tuple(map(int, oid.lstrip('.').split('.')))
+		elif isinstance(oid, tuple):
+			return oid
 		elif isinstance(oid, (int, tuple)):
-			raise TypeError
+			raise TypeError(oid)
 		else:
 			try:
 				return tuple(oid)
@@ -190,7 +294,12 @@ class Client(object):
 			else:
 				snmp_oid += self.format_oid(oid_index)
 
-		errorIndication, errorStatus, errorIndex, varBinds = cmdgen.CommandGenerator().getCmd(
+		cmdGen = cmdgen.CommandGenerator()
+		cmdGen.lexicographicMode = False
+		cmdGen.lookupNames = False;
+		cmdGen.lookupValues = False;
+
+		errorIndication, errorStatus, errorIndex, varBinds = cmdGen.getCmd(
 			self._authdata,
 			self._transport,
 			univ.ObjectIdentifier(snmp_oid),
@@ -248,12 +357,12 @@ class Client(object):
 		}
 
 		ret_ = {}
-		for if_index, value in self._table_helper((1, 3, 6, 1, 2, 1, 2, 2, 1), table_columns, column_names).iteritems():
+		for key, value in self._table_entries(oid_lookup['ifEntry'], table_columns, column_names).iteritems():
 			if 'ifAdminStatus' in value:
 				value['ifAdminStatus'] = self.decode_ifAdminStatus(value.get('ifAdminStatus'))
 			if 'ifOperStatus' in value:
 				value['ifOperStatus'] = self.decode_ifOperStatus(value.get('ifOperStatus'))
-			ret_[if_index] = value
+			ret_[key] = value
 		return ret_
 
 	def ifXTable(self, column_names):
@@ -280,17 +389,17 @@ class Client(object):
 		}
 
 		ret_ = {}
-		for if_index, value in self._table_helper((1, 3, 6, 1, 2, 1, 31, 1, 1, 1), table_columns, column_names).iteritems():
+		for key, value in self._table_entries(oid_lookup['ifXEntry'], table_columns, column_names).iteritems():
 			if 'ifLinkUpDownTrapEnable' in value:
 				value['ifLinkUpDownTrapEnable'] = value.get('ifLinkUpDownTrapEnable')
 			if 'ifConnectorPresent' in value:
 				value['ifConnectorPresent'] = value.get('ifConnectorPresent')
-			ret_[if_index] = value
+			ret_[key] = value
 		return ret_
 
 	def inetCidrRouteTable(self, column_names):
-		return self._table_helper(
-			(1, 3, 6, 1, 2, 1, 4, 24, 7, 1),
+		return self._table_entries(
+			oid_lookup['inetCidrRouteEntry'],
 			{
 				'inetCidrRouteDestType': 1,
 				'inetCidrRouteDest': 2,
@@ -308,7 +417,7 @@ class Client(object):
 				'inetCidrRouteMetric3': 14,
 				'inetCidrRouteMetric4': 15,
 				'inetCidrRouteMetric5': 16,
-				'inetCidrRouteStatus': 17
+				'inetCidrRouteStatus': 17,
 			},
 			column_names
 		)
@@ -317,9 +426,49 @@ class Client(object):
 		return self.ifXTable(['ifName'])
 #		return self.get_table_index_only((1, 3, 6, 1, 2, 1, 2, 2, 1, 2))
 
+	def ipAddressPrefixTable(self, column_names):
+		return self._table_entries(
+			oid_lookup['ipAddressPrefixEntry'],
+			{
+				'ipAddressPrefixIfIndex': 1,
+				'ipAddressPrefixType': 2,
+				'ipAddressPrefixPrefix': 3,
+				'ipAddressPrefixLength': 4,
+				'ipAddressPrefixOrigin': 5,
+				'ipAddressPrefixOnLinkFlag': 6,
+				'ipAddressPrefixAutonomousFlag': 7,
+				'ipAddressPrefixAdvPreferredLifetime': 8,
+				'ipAddressPrefixAdvValidLifetime': 9,
+			},
+			column_names
+		)
+
+	def ipAddressTable(self, column_names):
+		return self._table_entries(
+			oid_lookup['ipAddressEntry'],
+			{
+				'ipAddressAddrType': 1,
+				'ipAddressAddr': 2,
+				'ipAddressIfIndex': 3,
+				'ipAddressType': 4,
+#Value   Label/Meaning
+#1       unicast
+#2       anycast
+#3       broadcast
+				'ipAddressPrefix': 5,
+				'ipAddressOrigin': 6,
+				'ipAddressStatus': 7,
+				'ipAddressCreated': 8,
+				'ipAddressLastChanged': 9,
+				'ipAddressRowStatus': 10,
+				'ipAddressStorageType': 11,
+			},
+			column_names
+		)
+
 	def ipNetToMediaTable(self, column_names):
-		return self._table_helper(
-			(1, 3, 6, 1, 2, 1, 4, 22, 1),
+		return self._table_entries(
+			oid_lookup['ipNetToMediaEntry'],
 			{
 				'ipNetToMediaIfIndex': 1,
 				'ipNetToMediaPhysAddress': 2,
@@ -330,8 +479,8 @@ class Client(object):
 		)
 
 	def ipRouteTable(self, column_names):
-		return self._table_helper(
-			(1, 3, 6, 1, 2, 1, 4, 21, 1),
+		return self._table_entries(
+			oid_lookup['ipRouteEntry'],
 			{
 				'ipRouteDest': 1,
 				'ipRouteIfIndex': 2,
@@ -345,26 +494,26 @@ class Client(object):
 				'ipRouteAge': 10,
 				'ipRouteMask': 11,
 				'ipRouteMetric5': 12,
-				'ipRouteInfo': 13
+				'ipRouteInfo': 13,
 			},
 			column_names
 		)
 
 	def lldpLocPortTable(self, column_names):
-		return self._table_helper(
-			(1, 0, 8802, 1, 1, 2, 1, 3, 7, 1),
+		return self._table_entries(
+			oid_lookup['lldpLocPortEntry'],
 			{
 				'lldpLocPortNum': 1,
 				'lldpLocPortIdSubtype': 2,
 				'lldpLocPortId': 3,
-				'lldpLocPortDesc': 4
+				'lldpLocPortDesc': 4,
 			},
 			column_names
 		)
 
 	def lldpRemTable(self, column_names):
-		return self._table_helper(
-			(1, 0, 8802, 1, 1, 2, 1, 4, 1, 1),
+		return self._table_entries(
+			oid_lookup['lldpRemEntry'],
 			{
 				'lldpRemTimeMark': 1,
 				'lldpRemLocalPortNum': 2,
@@ -377,7 +526,7 @@ class Client(object):
 				'lldpRemSysName': 9,
 				'lldpRemSysDesc': 10,
 				'lldpRemSysCapSupported': 11,
-				'lldpRemSysCapEnabled': 12
+				'lldpRemSysCapEnabled': 12,
 			},
 			column_names
 		)
@@ -400,13 +549,13 @@ class Client(object):
 		return str(self.get_oid((1, 3, 6, 1, 2, 1, 1, 8, 0)))
 
 	def sysORTable(self, column_names):
-		return self._table_helper(
-			(1, 3, 6, 1, 2, 1, 1, 9, 1),
+		return self._table_entries(
+			oid_lookup['sysOREntry'],
 			{
 				'sysORIndex': 1,
 				'sysORID': 2,
 				'sysORDescr': 3,
-				'sysORUpTime': 4
+				'sysORUpTime': 4,
 			},
 			column_names
 		)
@@ -429,7 +578,12 @@ class Client(object):
 	def walk_oids(self, oids):
 		assert isinstance(oids, list)
 
-		errorIndication, errorStatus, errorIndex, varBindTable = cmdgen.CommandGenerator().nextCmd(
+		cmdGen = cmdgen.CommandGenerator()
+		cmdGen.lexicographicMode = False
+		cmdGen.lookupNames = False;
+		cmdGen.lookupValues = False;
+
+		errorIndication, errorStatus, errorIndex, varBindTable = cmdGen.nextCmd(
 			self._authdata,
 			self._transport,
 			*map(univ.ObjectIdentifier, oids)
@@ -452,7 +606,7 @@ class Client(object):
 				return ret_
 		return None
 
-	def _table_helper(self, base_oid, table_columns, column_names):
+	def _table_entries(self, entry_oid, table_columns, column_names):
 		assert isinstance(table_columns, dict)
 		assert isinstance(column_names, list)
 
@@ -460,23 +614,27 @@ class Client(object):
 			column_names = [k for k, v in table_columns.iteritems()]
 
 		oid_list = []
-#		for column_name in column_names:
-#			if column_name in table_columns:
-#				oid_list.append(base_oid + (table_columns[column_name], ))
-		if len(column_names) == 1:
-			oid_list.append(base_oid + (table_columns[column_names[0]], ))
-		else:
-			oid_list.append(base_oid)
+		for column_name in column_names:
+			if column_name in table_columns:
+#				oid_list.append(entry_oid + (table_columns[column_name], ))
+				pass
+			else:
+				raise ValueError('Invalid column - [{}]'.format(column_name))
 
-		base_oid_length = len(base_oid)
+		if len(column_names) == 1:
+			oid_list.append(entry_oid + (table_columns[column_names[0]], ))
+		else:
+			oid_list.append(entry_oid)
+
+		entry_oid_length = len(entry_oid)
 		table_columns_reversed = dict((v, k) for k, v in table_columns.iteritems())
 
 		ret_ = {}
 		for oid, value in self.walk_oids(oid_list).iteritems():
-			if oid[:base_oid_length] != base_oid:
+			if oid[:entry_oid_length] != entry_oid:
 				raise ValueError('OID out of range - [{}]'.format(oid))
 
-			oid_parts = oid[base_oid_length:]
+			oid_parts = oid[entry_oid_length:]
 			if len(oid_parts) < 2:
 				raise ValueError('Cannot get index')
 
