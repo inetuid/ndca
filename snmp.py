@@ -21,6 +21,7 @@ oid_lookup = {
 	'bgpPeerEntry': (1, 3, 6, 1, 2, 1, 15, 3, 1),
 	'dot1dTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 4, 3, 1),
 	'dot1dBasePortEntry': (1, 3, 6, 1, 2, 1, 17, 1, 4, 1),
+	'dot1qTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 2, 2, 1),
 	'dot1qVlanCurrentEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 4, 2, 1),
 	'entPhysicalEntry': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1),
 	'entPhysicalMfgName': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1, 12, 1),
@@ -135,6 +136,17 @@ class Client(object):
 		return peer_state.get(decode_value, '')
 
 	@staticmethod
+	def decode_dot1qTpFdbStatus(decode_value):
+		dot1qTpFdbStatus = {
+			1: 'other',
+			2: 'invalid',
+			3: 'learned',
+			4: 'self',
+			5: 'mgmt',
+		}
+		return dot1qTpFdbStatus.get(decode_value, '')
+
+	@staticmethod
 	def decode_ifAdminStatus(decode_value):
 		admin_status = {
 			1: 'up',
@@ -156,6 +168,7 @@ class Client(object):
 		}
 		return oper_status.get(decode_value, '')
 
+	@staticmethod
 	def decode_PhysicalClass(decode_value):
 		physical_class = {
 			1: 'other',
@@ -196,6 +209,20 @@ class Client(object):
 			},
 			column_names
 		)
+
+	def dot1qTpFdbTable(self, column_names):
+		table_columns = {
+			'dot1qTpFdbAddress': 1,
+			'dot1qTpFdbPort': 2,
+			'dot1qTpFdbStatus': 3,
+		}
+
+		ret_ = {}
+		for key, value in self._table_entries(oid_lookup['dot1qTpFdbEntry'], table_columns, column_names).iteritems():
+			if 'dot1qTpFdbStatus' in value:
+				value['dot1qTpFdbStatus'] = self.decode_dot1qTpFdbStatus(value.get('dot1qTpFdbStatus'))
+			ret_[key] = value
+		return ret_
 
 	def dot1qVlanCurrentTable(self, column_names):
 		return self._table_entries(
