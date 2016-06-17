@@ -29,7 +29,7 @@ class ROS_Client(yandc.vendor_base.Client):
 			try:
 				if not snmp_client.sysObjectID().startswith('1.3.6.1.4.1.14988.1'):
 					raise ValueError('Not a Mikrotik device')
-			except snmp.GetError:
+			except yandc.snmp.GetError:
 				pass
 			else:
 				self.snmp_client = snmp_client
