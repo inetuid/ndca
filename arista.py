@@ -87,13 +87,13 @@ class EOS_Client(yandc.vendor_base.Client):
 				return False
 			else:
 				for foo in config_output:
-					if foo != dict():
+					if foo != {}:
 						return False
 			return True
 		elif self.can_ssh():
 			try:
 				cli_output = self.ssh_command('configure terminal')
-				if cli_output == list():
+				if cli_output == []:
 					self.in_configure_mode(True)
 				else:
 					raise ValueError(cli_output[0])
@@ -106,11 +106,11 @@ class EOS_Client(yandc.vendor_base.Client):
 						continue
 
 					cli_output = self.ssh_command(stripped_line)
-					if cli_output != list():
+					if cli_output != []:
 						raise ValueError(cli_output[0])
 			finally:
 				cli_output = self.ssh_command('end')
-				if cli_output == list():
+				if cli_output == []:
 					self.in_configure_mode(False)
 					return True
 				else:
@@ -146,8 +146,8 @@ class EOS_Client(yandc.vendor_base.Client):
 
 				if not eapi_output['encoding'] == 'text':
 					raise TypeError('Enconding is not text')
-				return eapi_output.get('result', list()).get('output', '').splitlines()
-		return list()
+				return eapi_output.get('result', {}).get('output', '').splitlines()
+		return []
 
 	def get_config(self, source='running', section=None):
 		if self.can_eapi():

@@ -35,7 +35,7 @@ class IOS_Client(yandc.vendor_base.Client):
 	def configure_via_cli(self, new_config):
 		try:
 			cli_output = self.ssh_command('configure terminal')
-			if cli_output == list():
+			if cli_output == []:
 				self.in_configure_mode(True)
 			else:
 				raise ValueError(cli_output[0])
@@ -47,11 +47,11 @@ class IOS_Client(yandc.vendor_base.Client):
 					continue
 
 				cli_output = self.ssh_command(stripped_line)
-				if cli_output != list():
+				if cli_output != []:
 					raise ValueError(cli_output[0])
 		finally:
 			cli_output = self.ssh_command('end')
-			if cli_output == list():
+			if cli_output == []:
 				self.in_configure_mode(False)
 
 				return True

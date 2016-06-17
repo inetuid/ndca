@@ -55,7 +55,7 @@ class CL_Client(yandc.vendor_base.Client):
 			del self._software_version
 
 	def get_config(self, config_source='running', config_filter=None):
-		return list()
+		return []
 
 	def get_interface_config(self, if_name):
 		return self.ssh_command('ifquery ' + if_name)
@@ -68,7 +68,7 @@ class CL_Client(yandc.vendor_base.Client):
 			self._software_version = None
 			if self.can_ssh():
 				cli_output = self.ssh_command('lsb_release -r')
-				if cli_output != list():
+				if cli_output != []:
 					self._software_version = cli_output[0][8:].lstrip().rstrip()
 		return self._software_version
 
