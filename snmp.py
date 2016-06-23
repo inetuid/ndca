@@ -16,28 +16,28 @@ class SNMP_Exception(Exception):
 class GetError(SNMP_Exception):
 	pass
 
-oid_lookup = {
-	'bgp4PathAttrEntry': (1, 3, 6, 1, 2, 1, 15, 6, 1),
-	'bgpPeerEntry': (1, 3, 6, 1, 2, 1, 15, 3, 1),
-	'dot1dTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 4, 3, 1),
-	'dot1dBasePortEntry': (1, 3, 6, 1, 2, 1, 17, 1, 4, 1),
-	'dot1qTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 2, 2, 1),
-	'dot1qVlanCurrentEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 4, 2, 1),
-	'entPhysicalEntry': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1),
-	'entPhysicalMfgName': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1, 12, 1),
-	'ifEntry': (1, 3, 6, 1, 2, 1, 2, 2, 1),
-	'ifXEntry': (1, 3, 6, 1, 2, 1, 31, 1, 1, 1),
-	'inetCidrRouteEntry': (1, 3, 6, 1, 2, 1, 4, 24, 7, 1),
-	'ipAddressEntry': (1, 3, 6, 1, 2, 1, 4, 34, 1),
-	'ipAddressPrefixEntry': (1, 3, 6, 1, 2, 1, 4, 32, 1),
-	'ipNetToMediaEntry': (1, 3, 6, 1, 2, 1, 4, 22, 1),
-	'ipRouteEntry': (1, 3, 6, 1, 2, 1, 4, 21, 1),
-	'lldpLocPortEntry': (1, 0, 8802, 1, 1, 2, 1, 3, 7, 1),
-	'lldpRemEntry': (1, 0, 8802, 1, 1, 2, 1, 4, 1, 1),
-	'sysOREntry': (1, 3, 6, 1, 2, 1, 1, 9, 1),
-}
-
 class Client(object):
+	oid_lookup = {
+		'bgp4PathAttrEntry': (1, 3, 6, 1, 2, 1, 15, 6, 1),
+		'bgpPeerEntry': (1, 3, 6, 1, 2, 1, 15, 3, 1),
+		'dot1dTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 4, 3, 1),
+		'dot1dBasePortEntry': (1, 3, 6, 1, 2, 1, 17, 1, 4, 1),
+		'dot1qTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 2, 2, 1),
+		'dot1qVlanCurrentEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 4, 2, 1),
+		'entPhysicalEntry': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1),
+		'entPhysicalMfgName': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1, 12, 1),
+		'ifEntry': (1, 3, 6, 1, 2, 1, 2, 2, 1),
+		'ifXEntry': (1, 3, 6, 1, 2, 1, 31, 1, 1, 1),
+		'inetCidrRouteEntry': (1, 3, 6, 1, 2, 1, 4, 24, 7, 1),
+		'ipAddressEntry': (1, 3, 6, 1, 2, 1, 4, 34, 1),
+		'ipAddressPrefixEntry': (1, 3, 6, 1, 2, 1, 4, 32, 1),
+		'ipNetToMediaEntry': (1, 3, 6, 1, 2, 1, 4, 22, 1),
+		'ipRouteEntry': (1, 3, 6, 1, 2, 1, 4, 21, 1),
+		'lldpLocPortEntry': (1, 0, 8802, 1, 1, 2, 1, 3, 7, 1),
+		'lldpRemEntry': (1, 0, 8802, 1, 1, 2, 1, 4, 1, 1),
+		'sysOREntry': (1, 3, 6, 1, 2, 1, 1, 9, 1),
+	}
+
 	def __enter__(self):
 		return self
 
@@ -56,7 +56,7 @@ class Client(object):
 
 	def bgpPeerTable(self, column_names):
 		bgp_peer_table = self._table_entries(
-			oid_lookup['bgpPeerEntry'],
+			Client.oid_lookup['bgpPeerEntry'],
 			{
 				'bgpPeerIdentifier': 1,
 				'bgpPeerState': 2,
@@ -95,7 +95,7 @@ class Client(object):
 
 	def bgp4PathAttrTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['bgp4PathAttrEntry'],
+			Client.oid_lookup['bgp4PathAttrEntry'],
 			{
 				'bgp4PathAttrPeer': 1,
 				'bgp4PathAttrIpAddrPrefixLen': 2,
@@ -188,7 +188,7 @@ class Client(object):
 
 	def dot1dBasePortTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['dot1dBasePortEntry'],
+			Client.oid_lookup['dot1dBasePortEntry'],
 			{
 				'dot1dBasePort': 1,
 				'dot1dBasePortIfIndex': 2,
@@ -201,7 +201,7 @@ class Client(object):
 
 	def dot1dTpFdbTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['dot1dTpFdbEntry'],
+			Client.oid_lookup['dot1dTpFdbEntry'],
 			{
 				'dot1dTpFdbAddress': 1,
 				'dot1dTpFdbPort': 2,
@@ -218,7 +218,7 @@ class Client(object):
 		}
 
 		ret_ = {}
-		for key, value in self._table_entries(oid_lookup['dot1qTpFdbEntry'], table_columns, column_names).iteritems():
+		for key, value in self._table_entries(Client.oid_lookup['dot1qTpFdbEntry'], table_columns, column_names).iteritems():
 			if 'dot1qTpFdbStatus' in value:
 				value['dot1qTpFdbStatus'] = self.decode_dot1qTpFdbStatus(value.get('dot1qTpFdbStatus'))
 			ret_[key] = value
@@ -226,7 +226,7 @@ class Client(object):
 
 	def dot1qVlanCurrentTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['dot1qVlanCurrentEntry'],
+			Client.oid_lookup['dot1qVlanCurrentEntry'],
 			{
 				'dot1qVlanTimeMark': 1,
 				'dot1qVlanIndex': 2,
@@ -250,7 +250,7 @@ class Client(object):
 	def enterprise(self):
 		_sysObjectID = self.sysObjectID()
 
-		vendor = self.get_oid(oid_lookup['entPhysicalMfgName'])
+		vendor = self.get_oid(Client.oid_lookup['entPhysicalMfgName'])
 		if vendor == '':
 			if _sysObjectID.startswith('1.3.6.1.4.1.2544.1'):
 				vendor = 'Adva'
@@ -274,7 +274,7 @@ class Client(object):
 
 	def entPhysicalTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['entPhysicalEntry'],
+			Client.oid_lookup['entPhysicalEntry'],
 			{
 				'entPhysicalIndex': 1,
 				'entPhysicalDescr': 2,
@@ -384,7 +384,7 @@ class Client(object):
 		}
 
 		ret_ = {}
-		for key, value in self._table_entries(oid_lookup['ifEntry'], table_columns, column_names).iteritems():
+		for key, value in self._table_entries(Client.oid_lookup['ifEntry'], table_columns, column_names).iteritems():
 			if 'ifAdminStatus' in value:
 				value['ifAdminStatus'] = self.decode_ifAdminStatus(value.get('ifAdminStatus'))
 			if 'ifOperStatus' in value:
@@ -416,7 +416,7 @@ class Client(object):
 		}
 
 		ret_ = {}
-		for key, value in self._table_entries(oid_lookup['ifXEntry'], table_columns, column_names).iteritems():
+		for key, value in self._table_entries(Client.oid_lookup['ifXEntry'], table_columns, column_names).iteritems():
 			if 'ifLinkUpDownTrapEnable' in value:
 				value['ifLinkUpDownTrapEnable'] = value.get('ifLinkUpDownTrapEnable')
 			if 'ifConnectorPresent' in value:
@@ -426,7 +426,7 @@ class Client(object):
 
 	def inetCidrRouteTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['inetCidrRouteEntry'],
+			Client.oid_lookup['inetCidrRouteEntry'],
 			{
 				'inetCidrRouteDestType': 1,
 				'inetCidrRouteDest': 2,
@@ -455,7 +455,7 @@ class Client(object):
 
 	def ipAddressPrefixTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['ipAddressPrefixEntry'],
+			Client.oid_lookup['ipAddressPrefixEntry'],
 			{
 				'ipAddressPrefixIfIndex': 1,
 				'ipAddressPrefixType': 2,
@@ -472,7 +472,7 @@ class Client(object):
 
 	def ipAddressTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['ipAddressEntry'],
+			Client.oid_lookup['ipAddressEntry'],
 			{
 				'ipAddressAddrType': 1,
 				'ipAddressAddr': 2,
@@ -495,7 +495,7 @@ class Client(object):
 
 	def ipNetToMediaTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['ipNetToMediaEntry'],
+			Client.oid_lookup['ipNetToMediaEntry'],
 			{
 				'ipNetToMediaIfIndex': 1,
 				'ipNetToMediaPhysAddress': 2,
@@ -507,7 +507,7 @@ class Client(object):
 
 	def ipRouteTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['ipRouteEntry'],
+			Client.oid_lookup['ipRouteEntry'],
 			{
 				'ipRouteDest': 1,
 				'ipRouteIfIndex': 2,
@@ -528,7 +528,7 @@ class Client(object):
 
 	def lldpLocPortTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['lldpLocPortEntry'],
+			Client.oid_lookup['lldpLocPortEntry'],
 			{
 				'lldpLocPortNum': 1,
 				'lldpLocPortIdSubtype': 2,
@@ -540,7 +540,7 @@ class Client(object):
 
 	def lldpRemTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['lldpRemEntry'],
+			Client.oid_lookup['lldpRemEntry'],
 			{
 				'lldpRemTimeMark': 1,
 				'lldpRemLocalPortNum': 2,
@@ -577,7 +577,7 @@ class Client(object):
 
 	def sysORTable(self, column_names):
 		return self._table_entries(
-			oid_lookup['sysOREntry'],
+			Client.oid_lookup['sysOREntry'],
 			{
 				'sysORIndex': 1,
 				'sysORID': 2,

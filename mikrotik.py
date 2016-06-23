@@ -277,11 +277,18 @@ class ROS_Client(yandc.vendor_base.Client):
 
 
 class SNMP_Client(yandc.snmp.Client):
+	mtXRouterOs = (1, 3, 6, 1, 4, 1, 14988, 1, 1)
+	mtxrSystem = mtXRouterOs + (7, )
+	mtxrFirmwareVersion = mtxrSystem + (4, 0)
+	mtxrLicense =  mtXRouterOs + (4, )
+	mtrxLicVersion = mtxrLicense + (4, 0)
+	mtxrNeighborTableEntry = mtxrSystem + (11, 1, 1)
+
 	def fw_version(self):
-		return self.get_oid(self.format_oid('1.3.6.1.4.1.14988.1.1.7.4.0'))
+		return self.get_oid(SNMP_Client.mtxrFirmwareVersion)
 
 	def os_version(self):
-		return str(self.get_oid(self.format_oid('1.3.6.1.4.1.14988.1.1.4.4.0')))
+		return str(self.get_oid(SNMP_Client.mtrxLicVersion))
 
 
 class SSH_Client(yandc.ssh.Client):

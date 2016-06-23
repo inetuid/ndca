@@ -101,7 +101,7 @@ class EOS_Client(yandc.vendor_base.Client):
 				for config_line in new_config:
 					stripped_line = config_line.lstrip().rstrip()
 
-					if stripped_line == 'end' or stripped_line == 'exit':
+					if stripped_line in ['end', 'exit']:
 						warnings.warn('Skipping ' + config_line)
 						continue
 
@@ -127,6 +127,8 @@ class EOS_Client(yandc.vendor_base.Client):
 
 		super(EOS_Client, self).disconnect()
 
+		if hasattr(self, '_in_configure_flag'):
+			del self._in_configure_flag
 		if hasattr(self, '_software_version'):
 			del self._software_version
 
@@ -154,17 +156,18 @@ class EOS_Client(yandc.vendor_base.Client):
 			if section is not None:
 				return self._pyeapi_node.get_config(config='{}-config'.format(source), params='section {}'.format(section))
 			return self._pyeapi_node.get_config(config='{}-config'.format(source))
-		else:
+		elif self.can_ssh():
 			config_command = 'show {}-config'.format(source)
 			if section is not None:
 				config_command += ' | section {}'.format(section)
 			return self.ssh_command(config_command)
+		return []
 
 	def in_configure_mode(self, config_mode=None):
 		if config_mode is not None:
 			self._in_configure_flag = config_mode
 
-		last_prompt = self.ssh_client.shell_last_prompt(self.shell)
+		last_prompt = self.shell.last_prompt()
 		prompt_length = len(last_prompt)
 
 		if prompt_length > 9:
@@ -190,7 +193,7 @@ class EOS_Client(yandc.vendor_base.Client):
 
 	def privilege_level(self):
 		cli_output = self.ssh_command('show privilege')
-		if cli_output[0][:27] != 'Current privilege level is ':
+		if not cli_output[0].startswith('Current privilege level is '):
 			raise ValueError(cli_output)
 		return int(cli_output[0][27:])
 
@@ -221,7 +224,7 @@ class SNMP_Client(yandc.snmp.Client):
 	def os_version(self):
 		re_match = re.match(r'Arista Networks EOS version (.+) running on an Arista Networks (.+)$', self.sysDescr())
 		if re_match is not None:
-			return re_match.groups(0)[0]
+			return re_match.groups()[0]
 		return None
 
 
