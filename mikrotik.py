@@ -299,11 +299,14 @@ class SNMP_Client(yandc.snmp.Client):
 	mtxrNeighborTableEntry = mtxrNeighborTable + (1, )
 	mtxrInterfaceStatsTable = mtXRouterOs + (14, 1)
 	mtxrInterfaceStatsEntry = mtxrInterfaceStatsTable + (1, )
+	mtxrPartition = mtXRouterOs + (17, )
+	mtxrPartitionTable = mtxrPartition + (1, )
+	mtxrPartitionEntry = mtxrPartitionTable + (1, )
 
 	def fw_version(self):
 		return self.get_oid(SNMP_Client.mtxrFirmwareVersion)
 
-	def mtxrHl(self, column_names):
+	def mtxr_health(self, column_names):
 		table_columns = {
 			'mtxrHlCoreVoltage': 1,
 			'mtxrHlThreeDotThreeVoltage': 2,
@@ -328,6 +331,19 @@ class SNMP_Client(yandc.snmp.Client):
 		if health.get('mtxrHlActiveFan','') == 'n/a':
 			del health['mtxrHlActiveFan']
 		return health
+
+	def mtxr_system(self, column_names):
+		table_columns = {
+			'mtxrSystemReboot': 1,
+			'mtxrSystemUSBPowerReset': 2,
+			'mtxrSystemSerialNumber': 3,
+			'mtxrSystemFirmwareVersion': 4,
+			'mtxrSystemNote': 5,
+			'mtxrSystemBuildTime': 6,
+			'mtxrSystemFirmwareUpgradeVersion': 7,
+		}
+		system = self._table_entries(SNMP_Client.mtxrSystem, table_columns, column_names)[(0, )]
+		return system
 
 	def mtxrInterfaceStatsTable(self, column_names):
 		table_columns = {
@@ -413,6 +429,17 @@ class SNMP_Client(yandc.snmp.Client):
 			'mtxrNeighborInterfaceID': 8,
 		}
 		return self._table_entries(SNMP_Client.mtxrNeighborTableEntry, table_columns, column_names)
+
+	def mtxrPartitionTable(self, column_names):
+		table_columns = {
+			'mtxrPartitionIndex': 1,
+			'mtxrPartitionName': 2,
+			'mtxrPartitionSize': 3,
+			'mtxrPartitionVersion': 4,
+			'mtxrPartitionActive': 5,
+			'mtxrPartitionRunning': 6,
+		}
+		return self._table_entries(SNMP_Client.mtxrPartitionEntry, table_columns, column_names)
 
 	def mtxrQueueSimpleTable(self, column_names):
 		table_columns = {
