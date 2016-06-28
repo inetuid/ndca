@@ -12,7 +12,7 @@ except ImportError:
 else:
 	have_rosapi = True
 
-class ROS_Client(yandc.vendor_base.Client):
+class ROS_Client(yandc.BaseClient):
 	def __enter__(self):
 		return self
 
@@ -60,7 +60,7 @@ class ROS_Client(yandc.vendor_base.Client):
 
 	def cli_command(self, *args, **kwargs):
 		return self.ssh_command(*args, **kwargs)
-		raise vendor_base.Client_Exception('No CLI handler')
+		raise yandc.Client_Exception('No CLI handler')
 
 	def can_rosapi(self):
 		if hasattr(self, '_rosapi'):
@@ -83,6 +83,12 @@ class ROS_Client(yandc.vendor_base.Client):
 		if hasattr(self, '_software_version'):
 			del self._software_version
 
+	def file_exists(self, filename):
+		ssh_output = self.ssh_command('/file print without-paging count-only where name="{}"'.format(filename))
+		if ssh_output[0] != '0':
+			return True
+		return False
+
 	def get_config(self, source=None, section=None):
 		if section is not None:
 			return self.ssh_command('/' + section + ' export verbose')
@@ -94,7 +100,7 @@ class ROS_Client(yandc.vendor_base.Client):
 			if_type = 'ethernet'
 		elif if_type == 'pppoe-out':
 			if_type = 'pppoe-client'
-		terse_output = self.ssh_command(':put [/interface {} print terse without-paging where name="{}"]'.format(if_type, if_name))
+		terse_output = self.ssh_command(':put [/interface {} print without-paging terse where name="{}"]'.format(if_type, if_name))
 		return self.print_to_values_structured(terse_output)
 
 	def in_configure_mode(self, *args, **kwargs):
@@ -108,11 +114,11 @@ class ROS_Client(yandc.vendor_base.Client):
 					values_indexed[v[key]] = []
 				values_indexed[v[key]].append(v)
 			else:
-				raise vendor_base.Client_Exception('Key not seen')
+				raise yandc.Client_Exception('Key not seen')
 		return values_indexed
 
 	def interface_type(self, if_name):
-		terse_output = self.ssh_command('/interface print terse without-paging where name="{}"'.format(if_name))
+		terse_output = self.ssh_command('/interface print without-paging terse where name="{}"'.format(if_name))
 		if terse_output[0] == '':
 			return None
 #		terse_output.pop()
@@ -121,7 +127,7 @@ class ROS_Client(yandc.vendor_base.Client):
 	def interfaces(self):
 		if self.can_snmp():
 			return [str(v.get('ifName')) for k, v in self.snmp_client.interfaces().iteritems()]
-		return [v.get('name') for v in self.print_to_values_structured(self.ssh_command('/interface print terse without-paging'))]
+		return [v.get('name') for v in self.print_to_values_structured(self.ssh_command('/interface print without-paging terse'))]
 
 	@staticmethod
 	def print_concat(print_output):
@@ -146,7 +152,7 @@ class ROS_Client(yandc.vendor_base.Client):
 				continue
 			key, value = line.split(':', 1)
 			if key in as_values:
-				raise vendor_base.Client_Exception('Key already seen - [{}]'.format(key))
+				raise yandc.Client_Exception('Key already seen - [{}]'.format(key))
 			as_values[key.lstrip().rstrip()] = value.lstrip().rstrip()
 		return as_values
 
@@ -161,7 +167,7 @@ class ROS_Client(yandc.vendor_base.Client):
 			if line_parts[0].isdigit():
 				temp['index'] = line_parts.pop(0)
 			else:
-				raise vendor_base.Client_Exception(line)
+				raise yandc.Client_Exception(line)
 			if line_parts[0].find('=') == -1:
 				temp['flags'] = line_parts.pop(0)
 			last_key = None
@@ -173,7 +179,7 @@ class ROS_Client(yandc.vendor_base.Client):
 				elif last_key is not None:
 					temp[last_key] = ' '.join([temp[last_key], part])
 				else:
-					raise vendor_base.Client_Exception(part)
+					raise yandc.Client_Exception(part)
 			as_values.append(temp)
 		return as_values
 
@@ -191,7 +197,7 @@ class ROS_Client(yandc.vendor_base.Client):
 			if line_parts[0].isdigit():
 				temp['index'] = line_parts.pop(0)
 			else:
-				raise vendor_base.Client_Exception(line)
+				raise yandc.Client_Exception(line)
 			while True:
 				part = line_parts.pop(0)
 				if part.find('=') == -1:
@@ -208,7 +214,7 @@ class ROS_Client(yandc.vendor_base.Client):
 				elif last_key is not None:
 					temp[last_key] = ' '.join([temp[last_key], part])
 				else:
-					raise vendor_base.Client_Exception(part)
+					raise yandc.Client_Exception(part)
 			as_values.append(temp)
 		return as_values
 
@@ -229,12 +235,16 @@ class ROS_Client(yandc.vendor_base.Client):
 		return self.shell.command(*args, **kwargs)
 
 	def system_package_enabled(self, package):
-		terse_output = self.ssh_command('/system package print terse without-paging')
-#		terse_output.pop()
-		terse_values_indexed = self.index_values(self.print_to_values_structured(terse_output), 'name')
-		if package in terse_values_indexed:
-			return terse_values_indexed[package][0].get('flags', '').find('X') == -1
+		ssh_output = self.ssh_command('/system package print without-paging count-only where name ="{}" disabled=no'.format(package))
+		if ssh_output[0] != '0':
+			return True
 		return False
+#		terse_output = self.ssh_command('/system package print without-paging terse')
+##		terse_output.pop()
+#		terse_values_indexed = self.index_values(self.print_to_values_structured(terse_output), 'name')
+#		if package in terse_values_indexed:
+#			return terse_values_indexed[package][0].get('flags', '').find('X') == -1
+#		return False
 
 	def to_seconds(self, time_format):
 		seconds = minutes = hours = days = weeks = 0
@@ -276,6 +286,31 @@ class ROS_Client(yandc.vendor_base.Client):
 	@staticmethod
 	def vendor():
 		return 'Mikrotik'
+
+	def write_file_size_check(self, contents):
+		if len(contents) > 4095:
+			raise ValueError('Maximum file size exceeded')
+
+	def write_file_contents(self, name, contents=''):
+		self.write_file_size_check(contents)
+		cli_output = self.ssh_command('/file set {} contents="{}"'.format(name, contents))
+		if cli_output != []:
+			raise yandc.Client_Exception('Cannot set contents - [{}]'.format(cli_output[0]))
+		return True
+
+	def write_rsc_file(self, name, contents=''):
+		self.write_file_size_check(contents)
+		cli_output = self.ssh_command('/system routerboard export file={}'.format(name))
+		if cli_output != []:
+			raise yandc.Client_Exception('Cannot create file - [{}]'.format(cli_output[0]))
+		return self.write_file_contents('{}.rsc'.format(name), contents)
+
+	def write_txt_file(self, name, contents=''):
+		self.write_file_size_check(contents)
+		cli_output = self.ssh_command('/file print file={}'.format(name))
+		if cli_output != []:
+			raise yandc.Client_Exception('Cannot create file - [{}]'.format(cli_output[0]))
+		return self.write_file_contents('{}.txt'.format(name), contents)
 
 
 class SNMP_Client(yandc.snmp.Client):
