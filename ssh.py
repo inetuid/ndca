@@ -67,16 +67,16 @@ class Client(object):
 		except paramiko.BadAuthenticationType as bad_auth_type:
 			raise AuthenticationError('Auth method not supported - [{}]'.format(bad_auth_type.allowed_types))
 		else:
-			self._paramiko = paramiko_transport
+			self.paramiko_transport = paramiko_transport
 
 	def channel(self):
-		if 'get_banner' in dir(self._paramiko):
+		if 'get_banner' in dir(self.paramiko_transport):
 			pass
-		return self._paramiko.open_session()
+		return self.paramiko_transport.open_session()
 
 	def disconnect(self):
-		self._paramiko.close()
-		del self._paramiko
+		self.paramiko_transport.close()
+		del self.paramiko_transport
 
 	def exec_command(self, command, *args):
 		chan = self.channel()
@@ -87,6 +87,16 @@ class Client(object):
 
 	def on_connect(self, paramiko):
 		pass
+
+	def sftp_get(self, remote_path, local_path):
+		sftp = paramiko.SFTPClient.from_transport(self.paramiko_transport)
+		sftp.get(remote_path, local_path)
+		sftp.close()
+
+	def sftp_put(self, local_path, remote_path):
+		sftp = paramiko.SFTPClient.from_transport(self.paramiko_transport)
+		sftp.put(local_path, remote_path)
+		sftp.close()
 
 
 class CommandError(SSH_Exception):
