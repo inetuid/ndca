@@ -100,7 +100,7 @@ class ROS_Client(yandc.BaseClient):
 			if_type = 'ethernet'
 		elif if_type == 'pppoe-out':
 			if_type = 'pppoe-client'
-		terse_output = self.ssh_command(':put [/interface {} print without-paging terse where name="{}"]'.format(if_type, if_name))
+		terse_output = self.ssh_command('/interface {} print without-paging terse where name="{}"'.format(if_type, if_name))
 		return self.print_to_values_structured(terse_output)
 
 	def in_configure_mode(self, *args, **kwargs):
