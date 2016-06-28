@@ -1,10 +1,6 @@
 import warnings
 
-class Client_Exception(Exception):
-	pass
-
-
-class Client(object):
+class BaseClient(object):
 	def __init__(self, *args, **kwargs):
 		assert 'host' in kwargs, 'No host specified'
 

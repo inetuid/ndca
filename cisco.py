@@ -7,7 +7,7 @@ def ios_version(s):
 		return re_match.groups()[0]
 	return None
 
-class IOS_Client(yandc.vendor_base.Client):
+class IOS_Client(yandc.BaseClient):
 	def __enter__(self):
 		return self
 
@@ -170,7 +170,7 @@ class SSH_Shell(yandc.ssh.Shell):
 		return super(SSH_Shell, self).exit('logout')
 
 
-class XR_Client(yandc.vendor_base.Client):
+class XR_Client(yandc.BaseClient):
 	def __enter__(self):
 		return self
 

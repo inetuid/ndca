@@ -8,7 +8,7 @@ class Client(object):
 	def __new__(cls, *args, **kwargs):
 		assert 'host' in kwargs, 'No host specified'
 
-		grouped_kwargs = yandc.vendor_base.Client.group_kwargs('snmp_', **kwargs)
+		grouped_kwargs = yandc.BaseClient.group_kwargs('snmp_', **kwargs)
 
 		if not 'snmp_' in grouped_kwargs:
 			raise Exception('No SNMP details specified')

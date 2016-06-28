@@ -11,7 +11,7 @@ except ImportError:
 else:
 	have_pyeapi = True
 
-class EOS_Client(yandc.vendor_base.Client):
+class EOS_Client(yandc.BaseClient):
 	def __enter__(self):
 		return self
 

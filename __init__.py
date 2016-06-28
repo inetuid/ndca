@@ -1,3 +1,6 @@
 import snmp
 import ssh
-import vendor_base
+from vendor_base import BaseClient
+
+class Client_Exception(Exception):
+	pass

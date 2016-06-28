@@ -1,7 +1,7 @@
 import re
 import yandc
 
-class CL_Client(yandc.vendor_base.Client):
+class CL_Client(yandc.BaseClient):
 	def __enter__(self):
 		return self
 
