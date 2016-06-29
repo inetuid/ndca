@@ -48,11 +48,7 @@ class CL_Client(yandc.BaseClient):
 		if self.can_ssh() and hasattr(self, 'shell'):
 			self.shell.exit()
 			del self.shell
-
 		super(CL_Client, self).disconnect()
-
-		if hasattr(self, '_software_version'):
-			del self._software_version
 
 	def get_config(self, config_source='running', config_filter=None):
 		return []
@@ -64,13 +60,11 @@ class CL_Client(yandc.BaseClient):
 		return False
 		
 	def software_version(self):
-		if not hasattr(self, '_software_version'):
-			self._software_version = None
-			if self.can_ssh():
-				cli_output = self.ssh_command('lsb_release -r')
-				if cli_output != []:
-					self._software_version = cli_output[0][8:].lstrip().rstrip()
-		return self._software_version
+		if self.can_ssh():
+			cli_output = self.ssh_command('lsb_release -r')
+			if cli_output != []:
+				return cli_output[0][8:].lstrip().rstrip()
+		return ''
 
 	def ssh_command(self, *args, **kwargs):
 		if not self.can_ssh():

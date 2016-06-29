@@ -129,8 +129,6 @@ class EOS_Client(yandc.BaseClient):
 
 		if hasattr(self, '_in_configure_flag'):
 			del self._in_configure_flag
-		if hasattr(self, '_software_version'):
-			del self._software_version
 
 	@yandc.ssh.debug
 	def eapi_command(self, *args, **kwargs):
@@ -198,15 +196,13 @@ class EOS_Client(yandc.BaseClient):
 		return int(cli_output[0][27:])
 
 	def software_version(self):
-		if not hasattr(self, '_software_version'):
-			self._software_version = None
-			if self.can_snmp():
-				self._software_version = self.snmp_client.os_version()
-			elif self.can_eapi():
-				self._software_version = self.eapi_command('show version', encoding='json').get('version', None)
-			elif self.can_ssh():
-				self._software_version = json.loads(''.join(self.ssh_command('show version | json'))).get('version', None)
-		return self._software_version
+		if self.can_snmp():
+			return self.snmp_client.os_version()
+		elif self.can_eapi():
+			return self.eapi_command('show version', encoding='json').get('version', None)
+		elif self.can_ssh():
+			return json.loads(''.join(self.ssh_command('show version | json'))).get('version', None)
+		return ''
 
 	def ssh_command(self, *args, **kwargs):
 		if not self.can_ssh():

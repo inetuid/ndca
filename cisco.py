@@ -85,8 +85,6 @@ class IOS_Client(yandc.BaseClient):
 
 		if hasattr(self, '_in_configure_flag'):
 			del self._in_configure_flag
-		if hasattr(self, '_software_version'):
-			del self._software_version
 
 	def get_config(self, source='running', section=None):
 		if self.can_ssh():
@@ -132,14 +130,11 @@ class IOS_Client(yandc.BaseClient):
 		return int(cli_output[0][27:])
 
 	def software_version(self):
-		if not hasattr(self, '_software_version'):
-			self._software_version = None
-			if self.can_snmp():
-				self._software_version = self.snmp_client.os_version()
-			elif self.can_ssh():
-				cli_output = self.shell.command('show version')
-				self._software_version = ios_version(cli_output[0])
-		return self._software_version
+		if self.can_snmp():
+			return self.snmp_client.os_version()
+		elif self.can_ssh():
+			return ios_version(self.shell.command('show version')[0])
+		return ''
 
 	def ssh_command(self, *args, **kwargs):
 		if not self.can_ssh():

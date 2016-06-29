@@ -1,4 +1,4 @@
-import csv
+import datetime
 import re
 import time
 import yandc
@@ -37,6 +37,7 @@ class ROS_Client(yandc.BaseClient):
 		if have_rosapi:
 			pass
 
+#		if 'ssh_' in grouped_kwargs:
 		if not self.can_rosapi():
 			if not 'ssh_' in grouped_kwargs:
 				grouped_kwargs['ssh_'] = {}
@@ -57,6 +58,7 @@ class ROS_Client(yandc.BaseClient):
 			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
 			self.shell = SSH_Shell(self.ssh_client, shell_prompt)
 			self.shell.channel.set_combine_stderr(True)
+			self._datetime_offset = datetime.datetime.now() - self.ros_datetime()
 
 	def cli_command(self, *args, **kwargs):
 		return self.ssh_command(*args, **kwargs)
@@ -70,18 +72,41 @@ class ROS_Client(yandc.BaseClient):
 	def configure_via_cli(self, new_config):
 		pass
 
+	def ros_datetime(self):
+		system_clock = self.print_to_values(self.cli_command('/system clock print without-paging'))
+		date_string = '{} {} {}'.format(system_clock['date'], system_clock['time'], 'GMT')
+		return datetime.datetime.strptime(date_string, '%b/%d/%Y %H:%M:%S %Z')
+
 	def disconnect(self):
 		if self.can_rosapi():
 			pass
-
 		if self.can_ssh() and hasattr(self, 'shell'):
 			self.shell.exit()
 			del self.shell
-
 		super(ROS_Client, self).disconnect()
+		del self._datetime_offset
 
-		if hasattr(self, '_software_version'):
-			del self._software_version
+	def export_concat(self, export_config):
+		concat_output = []
+
+		export_section = None
+		concat_line = []
+
+		for line in export_config:
+			if line[0] == '/':
+				export_section = line
+				continue
+			elif line[0] == '#':
+				continue
+			elif line[-1:] == '\\':
+				concat_line.append(line[:-1].lstrip().rstrip())
+			else:
+				concat_line.append(line.lstrip())
+				foo = '{} {}'.format(export_section, ' '.join(concat_line))
+				concat_output.append(foo)
+				concat_line = []
+
+		return concat_output
 
 	def file_exists(self, filename):
 		ssh_output = self.ssh_command('/file print without-paging count-only where name="{}"'.format(filename))
@@ -130,12 +155,30 @@ class ROS_Client(yandc.BaseClient):
 		return [v.get('name') for v in self.print_to_values_structured(self.ssh_command('/interface print without-paging terse'))]
 
 	@staticmethod
+	def parse_as_key_value(kv_parts):
+		key_value = {}
+
+		last_key = None
+		for kv in kv_parts:
+			if kv.find('=') != -1:
+				k, v = kv.split('=', 1)
+				if k in key_value:
+					raise yandc.Client_Exception('Key already seen - [{}]'.format(k))
+				key_value[k] = v
+				last_key = k
+			elif last_key is not None:
+				key_value[last_key] = ' '.join([key_value[last_key], kv])
+			else:
+				raise yandc.Client_Exception(kv)
+
+		return key_value
+
+	@staticmethod
 	def print_concat(print_output):
 		concat_output = []
 		for line in print_output:
-			if not len(line):
+			if len(line) == 0:
 				continue
-#			if line.startswith('       '):
 			if line.startswith('   '):
 				concat_output[-1] = ' '.join([concat_output[-1], line.lstrip().rstrip()])
 			else:
@@ -146,86 +189,45 @@ class ROS_Client(yandc.BaseClient):
 
 	@staticmethod
 	def print_to_values(print_output):
-		as_values = {}
+		key_value = {}
 		for line in print_output:
-			if not len(line):
+			if len(line) == 0:
 				continue
 			key, value = line.split(':', 1)
-			if key in as_values:
+			if key in key_value:
 				raise yandc.Client_Exception('Key already seen - [{}]'.format(key))
-			as_values[key.lstrip().rstrip()] = value.lstrip().rstrip()
-		return as_values
+			key_value[key.lstrip().rstrip()] = value.lstrip().rstrip()
+		return key_value
 
-	@staticmethod
-	def Xprint_to_values_structured(print_output):
-		as_values = []
+	def print_to_values_structured(self, print_output):
+		kv_list = []
 		for line in print_output:
 			line_parts = line.lstrip().rstrip().split()
-			if not len(line_parts):
+			if len(line_parts) == 0:
 				continue
-			temp = {}
 			if line_parts[0].isdigit():
-				temp['index'] = line_parts.pop(0)
+				index_seen = line_parts.pop(0)
 			else:
 				raise yandc.Client_Exception(line)
-			if line_parts[0].find('=') == -1:
-				temp['flags'] = line_parts.pop(0)
-			last_key = None
-			for part in line_parts:
-				if part.find('=') != -1:
-					key, value = part.split('=', 1)
-					temp[key] = value
-					last_key = key
-				elif last_key is not None:
-					temp[last_key] = ' '.join([temp[last_key], part])
-				else:
-					raise yandc.Client_Exception(part)
-			as_values.append(temp)
-		return as_values
-
-	@staticmethod
-	def print_to_values_structured(print_output):
-		as_values = []
-		for line in print_output:
-			line_parts = line.lstrip().rstrip().split()
-			if not len(line_parts):
-				continue
-			temp = {
-				'index': None,
-				'flags': ''
-			}
-			if line_parts[0].isdigit():
-				temp['index'] = line_parts.pop(0)
-			else:
-				raise yandc.Client_Exception(line)
+			flags_seen = ''
 			while True:
 				part = line_parts.pop(0)
 				if part.find('=') == -1:
-					temp['flags'] += part
+					flags_seen += part
 				else:
 					line_parts.insert(0, part)
+					line_parts.insert(0, 'flags={}'.format(flags_seen))
+					line_parts.insert(0, 'index={}'.format(index_seen))
 					break
-			last_key = None
-			for part in line_parts:
-				if part.find('=') != -1:
-					key, value = part.split('=', 1)
-					temp[key] = value
-					last_key = key
-				elif last_key is not None:
-					temp[last_key] = ' '.join([temp[last_key], part])
-				else:
-					raise yandc.Client_Exception(part)
-			as_values.append(temp)
-		return as_values
+			kv_list.append(self.parse_as_key_value(line_parts))
+		return kv_list
 
 	def software_version(self):
-		if not hasattr(self, '_software_version'):
-			self._software_version = None
-			if self.can_snmp():
-				self._software_version = self.snmp_client.os_version()
-			elif self.can_ssh():
-				self._software_version = self.print_to_values(self.ssh_command('/system resource print without-paging')).get('version', None)
-		return self._software_version
+		if self.can_snmp():
+			return self.snmp_client.os_version()
+		elif self.can_ssh():
+			return self.print_to_values(self.ssh_command('/system resource print without-paging')).get('version', None)
+		return ''
 
 	def ssh_command(self, *args, **kwargs):
 		if not self.can_ssh():
@@ -276,12 +278,8 @@ class ROS_Client(yandc.BaseClient):
 		return seconds
 
 	def to_seconds_date_time(self, date_time):
-		try:
-			time_then = time.strptime(date_time, '%b/%d/%Y %H:%M:%S')
-		except (TypeError, ValueError) as e:
-			return date_time
-		time_now = time.time()
-		return int(time_now - time.mktime(time_then))
+		time_diff = datetime.datetime.now() - datetime.datetime.strptime(date_time, '%b/%d/%Y %H:%M:%S') + self._datetime_offset
+		return int(time_diff.total_seconds())
 
 	@staticmethod
 	def vendor():
