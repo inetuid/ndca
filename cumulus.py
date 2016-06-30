@@ -2,12 +2,6 @@ import re
 import yandc
 
 class CL_Client(yandc.BaseClient):
-	def __enter__(self):
-		return self
-
-	def __exit__(self, exception_type, exception_value, traceback):
-		self.disconnect()
-
 	def __init__(self, *args, **kwargs):
 		super(CL_Client, self).__init__(*args, **kwargs)
 
