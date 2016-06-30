@@ -38,11 +38,14 @@ class Client(object):
 		'sysOREntry': (1, 3, 6, 1, 2, 1, 1, 9, 1),
 	}
 
+	def __del__(self):
+		self.disconnect()
+
 	def __enter__(self):
 		return self
 
 	def __exit__(self, exception_type, exception_value, traceback):
-		pass
+		self.disconnect()
 
 	def __init__(self, host, community='public', port=161):
 		self._transport = cmdgen.UdpTransportTarget((host, port), timeout=1.0, retries=1)
@@ -244,33 +247,31 @@ class Client(object):
 			del self._authdata
 		if hasattr(self, '_transport'):
 			del self._transport
-		if hasattr(self, '_sysObjectID'):
-			del self._sysObjectID
 
 	def enterprise(self):
-		_sysObjectID = self.sysObjectID()
+		sys_object_id = self.sysObjectID()
 
 		vendor = self.get_oid(Client.oid_lookup['entPhysicalMfgName'])
 		if vendor == '':
-			if _sysObjectID.startswith('1.3.6.1.4.1.2544.1'):
+			if sys_object_id.startswith('1.3.6.1.4.1.2544.1'):
 				vendor = 'Adva'
-			elif _sysObjectID.startswith('1.3.6.1.4.1.30065.1'):
+			elif sys_object_id.startswith('1.3.6.1.4.1.30065.1'):
 				vendor = 'Arista'
-			elif _sysObjectID.startswith('1.3.6.1.4.1.9 1'):
+			elif sys_object_id.startswith('1.3.6.1.4.1.9 1'):
 				vendor = 'Cisco'
-			elif _sysObjectID.startswith('1.3.6.1.4.1.40310'):
+			elif sys_object_id.startswith('1.3.6.1.4.1.40310'):
 				vendor = 'Cumulus'
-			elif _sysObjectID.startswith('1.3.6.1.4.1.1991.1'):
+			elif sys_object_id.startswith('1.3.6.1.4.1.1991.1'):
 				vendor = 'Foundry'
-			elif _sysObjectID.startswith('1.3.6.1.4.1.2636.1'):
+			elif sys_object_id.startswith('1.3.6.1.4.1.2636.1'):
 				vendor = 'Juniper'
-			elif _sysObjectID.startswith('1.3.6.1.4.1.14988.1'):
+			elif sys_object_id.startswith('1.3.6.1.4.1.14988.1'):
 				vendor = 'Mikrotik'
-			elif _sysObjectID.startswith('1.3.6.1.4.1.2352.1'):
+			elif sys_object_id.startswith('1.3.6.1.4.1.2352.1'):
 				vendor = 'Redback'
-			elif _sysObjectID.startswith('1.3.6.1.4.1.890.1'):
+			elif sys_object_id.startswith('1.3.6.1.4.1.890.1'):
 				vendor = 'Zyxel'
-		return vendor, _sysObjectID
+		return vendor, sys_object_id
 
 	def entPhysicalTable(self, column_names):
 		return self._table_entries(
@@ -565,12 +566,10 @@ class Client(object):
 		return str(self.get_oid((1, 3, 6, 1, 2, 1, 1, 1, 0)))
 
 	def sysObjectID(self):
-		if not hasattr(self, '_sysObjectID'):
-			sys_object_id = '.'.join(map(str, self.get_oid((1, 3, 6, 1, 2, 1, 1, 2, 0))))
-			if len(sys_object_id) == 0:
-				raise ValueError('No sysObjectID')
-			self._sysObjectID = sys_object_id
-		return getattr(self, '_sysObjectID', None)
+		sys_object_id = '.'.join(map(str, self.get_oid((1, 3, 6, 1, 2, 1, 1, 2, 0))))
+		if len(sys_object_id) == 0:
+			raise ValueError('No sysObjectID')
+		return sys_object_id
 
 	def sysORLastChange(self):
 		return str(self.get_oid((1, 3, 6, 1, 2, 1, 1, 8, 0)))
