@@ -1,8 +1,19 @@
+import atexit
 import warnings
 
 class BaseClient(object):
+	def __del__(self):
+		self.disconnect()
+
+	def __enter__(self):
+		return self
+
+	def __exit__(self, exception_type, exception_value, traceback):
+		self.disconnect()
+
 	def __init__(self, *args, **kwargs):
 		assert 'host' in kwargs, 'No host specified'
+		atexit.register(self.disconnect)
 
 	def can_snmp(self):
 		if hasattr(self, 'snmp_client'):
