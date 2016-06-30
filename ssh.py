@@ -26,6 +26,9 @@ class ConnectError(SSH_Exception):
 
 
 class Client(object):
+	def __del__(self):
+		self.disconnect()
+
 	def __enter__(self):
 		return self
 
@@ -75,8 +78,9 @@ class Client(object):
 		return self.paramiko_transport.open_session()
 
 	def disconnect(self):
-		self.paramiko_transport.close()
-		del self.paramiko_transport
+		if hasattr(self, 'paramiko_transport'):
+			self.paramiko_transport.close()
+			del self.paramiko_transport
 
 	def exec_command(self, command, *args):
 		chan = self.channel()
@@ -104,12 +108,22 @@ class CommandError(SSH_Exception):
 
 
 class Shell(object):
+	def __del__(self):
+		self.exit()
+
+	def __enter__(self):
+		return self
+
+	def __exit__(self, exception_type, exception_value, traceback):
+		self.exit()
+
 	def __init__(self, ssh_client, shell_prompt, terminal_type='dumb'):
 		assert isinstance(ssh_client, Client)
 		assert isinstance(shell_prompt, ShellPrompt)
 
 		self.ssh_client = ssh_client
 		self.prompt = shell_prompt
+		self.last_prompt = ''
 
 		self.channel = ssh_client.channel()
 		self.channel.settimeout(0.2)
@@ -117,20 +131,18 @@ class Shell(object):
 		self.channel.get_pty(terminal_type, 160, 80)
 		self.channel.invoke_shell()
 
-		(banner, prompt_retries) = self.read_until_prompt()
-		if prompt_retries == 0:
+		banner, retries_left = self.read_until_prompt()
+		if retries_left == 0:
 			if len(banner) == 0:
 				raise SSH_Exception('Cannot auto-detect prompt')
 			timeout_prompt = banner.pop()
 			self.prompt.add_prompt(timeout_prompt)
 			self.command('\n', 5)
-#			self.last_prompt(timeout_prompt)
-#			self.on_prompt(timeout_prompt)
 		self.on_banner(banner)
 
 	def command(self, command, prompt_retries=40):
 		send_command = command.rstrip('\r\n')
-		if self.channel.send(send_command + '\r') != (len(send_command) + 1):
+		if self.send(send_command + '\r') != (len(send_command) + 1):
 			raise CommandError('Did not send all of command')
 		if prompt_retries:
 			while range(10, 0, -1):
@@ -148,21 +160,16 @@ class Shell(object):
 		return output
 
 	def exit(self, exit_command='exit'):
-		self.command(exit_command, 0)
-		self.channel.close()
-		del self.channel
-
+		if hasattr(self, 'channel'):
+			self.send(exit_command)
+			self.channel.close()
+			del self.channel
 		if hasattr(self, 'prompt'):
 			del self.prompt
 		if hasattr(self, 'ssh_client'):
 			del self.ssh_client
-		if hasattr(self, '_last_prompt'):
-			del self._last_prompt
-
-	def last_prompt(self, prompt=None):
-		if prompt is not None:
-			self._last_prompt = prompt
-		return getattr(self, '_last_prompt', '')
+		if hasattr(self, 'last_prompt'):
+			del self.last_prompt
 
 	def on_banner(self, banner):
 		pass
@@ -182,11 +189,17 @@ class Shell(object):
 			else :
 				output_line = self.on_output_line(raw_output)
 				if self.prompt.is_prompt(output_line):
-					self.last_prompt(output_line)
+					self.last_prompt = output_line
 					self.on_prompt(output_line)
 					break
 				output.append(output_line)
 		return (output, prompt_retries)
+
+	def send(self, to_send):
+		try:
+			return self.channel.send(to_send)
+		except Exception as e:
+			raise SSH_Exception(e.message)
 
 	@staticmethod
 	def _getc(chan):
