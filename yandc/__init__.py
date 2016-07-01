@@ -1,4 +1,4 @@
-__all__ = ['debug', 'EOS_Client', 'ISO_Client', 'XR_Client', 'CL_Client', 'ROS_Client']
+__all__ = ['debug', 'EOS_Client', 'IOS_Client', 'XR_Client', 'CL_Client', 'ROS_Client']
 
 import sys
 #
