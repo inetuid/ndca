@@ -1,10 +1,10 @@
-import arista
-import cisco
-import cumulus
-import mikrotik
-import io
+from yandc import *
+
 
 class ConnectHandler(object):
+	def __del__(self):
+		self.disconnect()
+
 	def __init__(self, *args, **kwargs):
 		client_kwargs = {}
 
@@ -25,27 +25,28 @@ class ConnectHandler(object):
 			client_kwargs['ssh_port'] = kwargs['port']
 
 		if kwargs['device_type'] == 'arista':
-			self._config_client = arista.EOS_Client(**client_kwargs)
+			self.yandc_client = EOS_Client(**client_kwargs)
 		elif kwargs['device_type'] == 'cisco_ios':
-			self._config_client = cisco.IOS_Client(**client_kwargs)
+			self.yandc_client = IOS_Client(**client_kwargs)
 		elif kwargs['device_type'] == 'cisco_xr':
-			self._config_client = cisco.XR_Client(**client_kwargs)
+			self.yandc_client = XR_Client(**client_kwargs)
 		elif kwargs['device_type'] == 'cumulus_linux':
-			self._config_client = cumulus.CL_Client(**client_kwargs)
+			self.yandc_client = CL_Client(**client_kwargs)
 		elif kwargs['device_type'] == 'mikrotik':
-			self._config_client = mikrotik.ROS_Client(**client_kwargs)
+			self.yandc_client = ROS_Client(**client_kwargs)
 		else:
 			raise ValueError('Device type ' + kwargs['device_type'] + ' not supported')
 
 	def check_config_mode(self):
-		return self._config_client.in_configure_mode()
+		return self.yandc_client.in_configure_mode()
 
 	def config_mode(self, config_command='', *args):
 		return NotImplementedError('config_mode()')
 
 	def disconnect(self):
-		self._config_client.disconnect()
-		del self._config_client
+		if hasattr(self, 'yandc_client'):
+			self.yandc_client.disconnect()
+			del self.yandc_client
 
 	def enable(self):
 		return ''
@@ -54,14 +55,14 @@ class ConnectHandler(object):
 		return NotImplementedError('exit_config_mode()')
 
 	def find_prompt(self, *args):
-		return self._config_client.shell.last_prompt
+		return self.yandc_client.shell.last_prompt
 
 	def send_command(self, command, *args):
-		return self._config_client.cli_command(command)
+		return self.yandc_client.cli_command(command)
 
 	def send_config_from_file(self, config_file, **kwargs):
-		with io.open(config_file) as input_file:
-			pass
+		with open(config_file, 'rb') as f:
+			self.send_config_set(f.read().splitlines())
 
 	def send_config_set(self, config_commands, *args):
-		return self._config_client.configure_via_cli(config_commands)
+		return self.yandc_client.configure_via_cli(config_commands)

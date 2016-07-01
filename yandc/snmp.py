@@ -1,22 +1,15 @@
+"""SNMP Helper
+"""
+
+__all__ = ['SNMP_Client', 'SNMP_Exception']
+
+import re
+#
 from pysnmp.entity.rfc3413.oneliner import cmdgen
 from pyasn1.type import univ
-import re
-import sys
 
-def debug(func):
-	def func_wrapper(*args, **kwargs):
-		result = func(*args, **kwargs)
-		sys.stderr.write('DEBUG: %s(%s, %s) = [%s]\n' % (func.__name__, args, kwargs, result))
-		return result
-	return func_wrapper
 
-class SNMP_Exception(Exception):
-	pass
-
-class GetError(SNMP_Exception):
-	pass
-
-class Client(object):
+class SNMP_Client(object):
 	oid_lookup = {
 		'bgp4PathAttrEntry': (1, 3, 6, 1, 2, 1, 15, 6, 1),
 		'bgpPeerEntry': (1, 3, 6, 1, 2, 1, 15, 3, 1),
@@ -59,7 +52,7 @@ class Client(object):
 
 	def bgpPeerTable(self, column_names):
 		bgp_peer_table = self._table_entries(
-			Client.oid_lookup['bgpPeerEntry'],
+			SNMP_Client.oid_lookup['bgpPeerEntry'],
 			{
 				'bgpPeerIdentifier': 1,
 				'bgpPeerState': 2,
@@ -98,7 +91,7 @@ class Client(object):
 
 	def bgp4PathAttrTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['bgp4PathAttrEntry'],
+			SNMP_Client.oid_lookup['bgp4PathAttrEntry'],
 			{
 				'bgp4PathAttrPeer': 1,
 				'bgp4PathAttrIpAddrPrefixLen': 2,
@@ -191,7 +184,7 @@ class Client(object):
 
 	def dot1dBasePortTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['dot1dBasePortEntry'],
+			SNMP_Client.oid_lookup['dot1dBasePortEntry'],
 			{
 				'dot1dBasePort': 1,
 				'dot1dBasePortIfIndex': 2,
@@ -204,7 +197,7 @@ class Client(object):
 
 	def dot1dTpFdbTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['dot1dTpFdbEntry'],
+			SNMP_Client.oid_lookup['dot1dTpFdbEntry'],
 			{
 				'dot1dTpFdbAddress': 1,
 				'dot1dTpFdbPort': 2,
@@ -221,7 +214,7 @@ class Client(object):
 		}
 
 		ret_ = {}
-		for key, value in self._table_entries(Client.oid_lookup['dot1qTpFdbEntry'], table_columns, column_names).iteritems():
+		for key, value in self._table_entries(SNMP_Client.oid_lookup['dot1qTpFdbEntry'], table_columns, column_names).iteritems():
 			if 'dot1qTpFdbStatus' in value:
 				value['dot1qTpFdbStatus'] = self.decode_dot1qTpFdbStatus(value.get('dot1qTpFdbStatus'))
 			ret_[key] = value
@@ -229,7 +222,7 @@ class Client(object):
 
 	def dot1qVlanCurrentTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['dot1qVlanCurrentEntry'],
+			SNMP_Client.oid_lookup['dot1qVlanCurrentEntry'],
 			{
 				'dot1qVlanTimeMark': 1,
 				'dot1qVlanIndex': 2,
@@ -251,7 +244,7 @@ class Client(object):
 	def enterprise(self):
 		sys_object_id = self.sysObjectID()
 
-		vendor = self.get_oid(Client.oid_lookup['entPhysicalMfgName'])
+		vendor = self.get_oid(SNMP_Client.oid_lookup['entPhysicalMfgName'])
 		if vendor == '':
 			if sys_object_id.startswith('1.3.6.1.4.1.2544.1'):
 				vendor = 'Adva'
@@ -275,7 +268,7 @@ class Client(object):
 
 	def entPhysicalTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['entPhysicalEntry'],
+			SNMP_Client.oid_lookup['entPhysicalEntry'],
 			{
 				'entPhysicalIndex': 1,
 				'entPhysicalDescr': 2,
@@ -334,14 +327,14 @@ class Client(object):
 		)
 
 		if errorIndication:
-			raise GetError(errorIndication)
+			raise SNMP_Exception(errorIndication)
 		else:
 			if errorStatus:
-				raise GetError(snmp_oid)
+				raise SNMP_Exception(snmp_oid)
 			else :
 				oid, value = varBinds[0]
 				if oid != snmp_oid:
-					raise GetError('Mismatched SNMP OID - [{}]'.format(oid))
+					raise SNMP_Exception('Mismatched SNMP OID - [{}]'.format(oid))
 				return value
 
 		return None
@@ -385,7 +378,7 @@ class Client(object):
 		}
 
 		ret_ = {}
-		for key, value in self._table_entries(Client.oid_lookup['ifEntry'], table_columns, column_names).iteritems():
+		for key, value in self._table_entries(SNMP_Client.oid_lookup['ifEntry'], table_columns, column_names).iteritems():
 			if 'ifAdminStatus' in value:
 				value['ifAdminStatus'] = self.decode_ifAdminStatus(value.get('ifAdminStatus'))
 			if 'ifOperStatus' in value:
@@ -417,7 +410,7 @@ class Client(object):
 		}
 
 		ret_ = {}
-		for key, value in self._table_entries(Client.oid_lookup['ifXEntry'], table_columns, column_names).iteritems():
+		for key, value in self._table_entries(SNMP_Client.oid_lookup['ifXEntry'], table_columns, column_names).iteritems():
 			if 'ifLinkUpDownTrapEnable' in value:
 				value['ifLinkUpDownTrapEnable'] = value.get('ifLinkUpDownTrapEnable')
 			if 'ifConnectorPresent' in value:
@@ -427,7 +420,7 @@ class Client(object):
 
 	def inetCidrRouteTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['inetCidrRouteEntry'],
+			SNMP_Client.oid_lookup['inetCidrRouteEntry'],
 			{
 				'inetCidrRouteDestType': 1,
 				'inetCidrRouteDest': 2,
@@ -456,7 +449,7 @@ class Client(object):
 
 	def ipAddressPrefixTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['ipAddressPrefixEntry'],
+			SNMP_Client.oid_lookup['ipAddressPrefixEntry'],
 			{
 				'ipAddressPrefixIfIndex': 1,
 				'ipAddressPrefixType': 2,
@@ -473,7 +466,7 @@ class Client(object):
 
 	def ipAddressTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['ipAddressEntry'],
+			SNMP_Client.oid_lookup['ipAddressEntry'],
 			{
 				'ipAddressAddrType': 1,
 				'ipAddressAddr': 2,
@@ -496,7 +489,7 @@ class Client(object):
 
 	def ipNetToMediaTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['ipNetToMediaEntry'],
+			SNMP_Client.oid_lookup['ipNetToMediaEntry'],
 			{
 				'ipNetToMediaIfIndex': 1,
 				'ipNetToMediaPhysAddress': 2,
@@ -508,7 +501,7 @@ class Client(object):
 
 	def ipRouteTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['ipRouteEntry'],
+			SNMP_Client.oid_lookup['ipRouteEntry'],
 			{
 				'ipRouteDest': 1,
 				'ipRouteIfIndex': 2,
@@ -529,7 +522,7 @@ class Client(object):
 
 	def lldpLocPortTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['lldpLocPortEntry'],
+			SNMP_Client.oid_lookup['lldpLocPortEntry'],
 			{
 				'lldpLocPortNum': 1,
 				'lldpLocPortIdSubtype': 2,
@@ -541,7 +534,7 @@ class Client(object):
 
 	def lldpRemTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['lldpRemEntry'],
+			SNMP_Client.oid_lookup['lldpRemEntry'],
 			{
 				'lldpRemTimeMark': 1,
 				'lldpRemLocalPortNum': 2,
@@ -576,7 +569,7 @@ class Client(object):
 
 	def sysORTable(self, column_names):
 		return self._table_entries(
-			Client.oid_lookup['sysOREntry'],
+			SNMP_Client.oid_lookup['sysOREntry'],
 			{
 				'sysORIndex': 1,
 				'sysORID': 2,
@@ -616,10 +609,10 @@ class Client(object):
 		)
 
 		if errorIndication:
-			raise GetError(errorIndication)
+			raise SNMP_Exception(errorIndication)
 		else:
 			if errorStatus:
-				raise GetError(errorStatus)
+				raise SNMP_Exception(errorStatus)
 			else :
 				ret_ = {}
 				for varBindTableRow in varBindTable:
@@ -627,7 +620,7 @@ class Client(object):
 						if oid in ret_:
 							if ret_[oid] == value:
 								continue
-							raise GetError('OID already seen - [{}]'.format(oid))
+							raise SNMP_Exception('OID already seen - [{}]'.format(oid))
 						ret_[oid] = value
 				return ret_
 		return None
@@ -675,3 +668,7 @@ class Client(object):
 
 			ret_[table_index][table_entry] = value
 		return ret_
+
+
+class SNMP_Exception(Exception):
+	pass

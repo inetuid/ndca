@@ -1,7 +1,15 @@
+"""Mikrotik ROS
+"""
+
+__all__ = ['ROS_Client']
+__author__ = 'Matt Ryan'
+
 import datetime
 import re
 import time
-import yandc
+#
+from .vendor_base import BaseClient
+from . import snmp, ssh
 
 have_rosapi = False
 
@@ -12,13 +20,8 @@ except ImportError:
 else:
 	have_rosapi = True
 
-class ROS_Client(yandc.BaseClient):
-	def __enter__(self):
-		return self
 
-	def __exit__(self, exception_type, exception_value, traceback):
-		self.disconnect()
-
+class ROS_Client(BaseClient):
 	def __init__(self, *args, **kwargs):
 		super(ROS_Client, self).__init__(*args, **kwargs)
 
@@ -29,7 +32,7 @@ class ROS_Client(yandc.BaseClient):
 			try:
 				if not snmp_client.sysObjectID().startswith('1.3.6.1.4.1.14988.1'):
 					raise ValueError('Not a Mikrotik device')
-			except yandc.snmp.GetError:
+			except snmp.SNMP_Exception:
 				pass
 			else:
 				self.snmp_client = snmp_client
@@ -37,7 +40,6 @@ class ROS_Client(yandc.BaseClient):
 		if have_rosapi:
 			pass
 
-#		if 'ssh_' in grouped_kwargs:
 		if not self.can_rosapi():
 			if not 'ssh_' in grouped_kwargs:
 				grouped_kwargs['ssh_'] = {}
@@ -46,7 +48,8 @@ class ROS_Client(yandc.BaseClient):
 			if not 'password' in grouped_kwargs['ssh_'] and 'password' in kwargs:
 				grouped_kwargs['ssh_']['password'] = kwargs['password']
 
-			shell_prompt = yandc.ssh.ShellPrompt(yandc.ssh.ShellPrompt.regexp_prompt(r'\[[^\@]+\@[^\]]+\] > $'))
+			shell_prompt = ssh.ShellPrompt(ssh.ShellPrompt.regexp_prompt(r'\[[^\@]+\@[^\]]+\] > $'))
+			shell_prompt.add_prompt(ssh.ShellPrompt.regexp_prompt(r'\[[^\@]+\@[^\]]+\] <SAFE> $'))
 
 			if 'username' in grouped_kwargs['ssh_']:
 				original_username = grouped_kwargs['ssh_']['username']
@@ -54,37 +57,53 @@ class ROS_Client(yandc.BaseClient):
 
 				if self.can_snmp():
 					shell_prompt.add_prompt('[' + original_username + '@' + self.snmp_client.sysName() + '] > ')
+					shell_prompt.add_prompt('[' + original_username + '@' + self.snmp_client.sysName() + '] <SAFE> ')
 
 			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
-			self.shell = SSH_Shell(self.ssh_client, shell_prompt)
+			self.shell = Shell(self.ssh_client, shell_prompt)
 			self.shell.channel.set_combine_stderr(True)
+
 			self._datetime_offset = datetime.datetime.now() - self.ros_datetime()
+			self._safe_mode_toggle = False
 
 	def cli_command(self, *args, **kwargs):
 		return self.ssh_command(*args, **kwargs)
-		raise yandc.Client_Exception('No CLI handler')
+		raise GeneralError('No CLI handler')
 
 	def can_rosapi(self):
 		if hasattr(self, '_rosapi'):
 			return True
 		return False
 
-	def configure_via_cli(self, new_config):
-		pass
+	def configure_via_cli(self, config_commands=[]):
+		if not self._safe_mode_toggle:
+			if not self.safe_mode_toggle():
+				self.safe_mode_toggle()
 
-	def ros_datetime(self):
-		system_clock = self.print_to_values(self.cli_command('/system clock print without-paging'))
-		date_string = '{} {} {}'.format(system_clock['date'], system_clock['time'], 'GMT')
-		return datetime.datetime.strptime(date_string, '%b/%d/%Y %H:%M:%S %Z')
+		for config_line in config_commands:
+			cli_output = self.cli_command(config_line)
+			if cli_output != []:
+				raise ValueError(cli_output[0])
+
+		if self.safe_mode_toggle():
+			self.safe_mode_toggle()
 
 	def disconnect(self):
 		if self.can_rosapi():
 			pass
 		if self.can_ssh() and hasattr(self, 'shell'):
+			if self._safe_mode_toggle:
+				if self.safe_mode_toggle():
+					self.safe_mode_toggle()
 			self.shell.exit()
 			del self.shell
+
 		super(ROS_Client, self).disconnect()
-		del self._datetime_offset
+
+		if hasattr(self, '_datetime_offset'):
+			del self._datetime_offset
+		if hasattr(self, '_safe_mode_toggle') :
+			del self._safe_mode_toggle
 
 	def export_concat(self, export_config):
 		concat_output = []
@@ -102,22 +121,21 @@ class ROS_Client(yandc.BaseClient):
 				concat_line.append(line[:-1].lstrip().rstrip())
 			else:
 				concat_line.append(line.lstrip())
-				foo = '{} {}'.format(export_section, ' '.join(concat_line))
-				concat_output.append(foo)
+				concat_output.append('{} {}'.format(export_section, ' '.join(concat_line)))
 				concat_line = []
 
 		return concat_output
 
 	def file_exists(self, filename):
-		ssh_output = self.ssh_command('/file print without-paging count-only where name="{}"'.format(filename))
-		if ssh_output[0] != '0':
+		cli_output = self.cli_command('/file print without-paging count-only where name="{}"'.format(filename))
+		if cli_output[0] != '0':
 			return True
 		return False
 
 	def get_config(self, source=None, section=None):
 		if section is not None:
-			return self.ssh_command('/' + section + ' export verbose')
-		return self.ssh_command('/export verbose')
+			return self.cli_command('/' + section + ' export verbose')
+		return self.cli_command('/export verbose')
 
 	def get_interface_config(self, if_name):
 		if_type = self.interface_type(if_name)
@@ -125,13 +143,14 @@ class ROS_Client(yandc.BaseClient):
 			if_type = 'ethernet'
 		elif if_type == 'pppoe-out':
 			if_type = 'pppoe-client'
-		terse_output = self.ssh_command('/interface {} print without-paging terse where name="{}"'.format(if_type, if_name))
+		terse_output = self.cli_command('/interface {} print without-paging terse where name="{}"'.format(if_type, if_name))
 		return self.print_to_values_structured(terse_output)
 
 	def in_configure_mode(self, *args, **kwargs):
 		return False
 
-	def index_values(self, values, key='index'):
+	@staticmethod
+	def index_values(values, key='index'):
 		values_indexed = {}
 		for v in values:
 			if key in v:
@@ -139,11 +158,11 @@ class ROS_Client(yandc.BaseClient):
 					values_indexed[v[key]] = []
 				values_indexed[v[key]].append(v)
 			else:
-				raise yandc.Client_Exception('Key not seen')
+				raise GeneralError('Key not seen')
 		return values_indexed
 
 	def interface_type(self, if_name):
-		terse_output = self.ssh_command('/interface print without-paging terse where name="{}"'.format(if_name))
+		terse_output = self.cli_command('/interface print without-paging terse where name="{}"'.format(if_name))
 		if terse_output[0] == '':
 			return None
 #		terse_output.pop()
@@ -152,7 +171,14 @@ class ROS_Client(yandc.BaseClient):
 	def interfaces(self):
 		if self.can_snmp():
 			return [str(v.get('ifName')) for k, v in self.snmp_client.interfaces().iteritems()]
-		return [v.get('name') for v in self.print_to_values_structured(self.ssh_command('/interface print without-paging terse'))]
+		return [v.get('name') for v in self.print_to_values_structured(self.cli_command('/interface print without-paging terse'))]
+
+	@staticmethod
+	def is_cli_error(output_line):
+		re_match = re.match(r'[^\(]+\(line \d+ column \d+\)', output_line)
+		if re_match is not None:
+			return True
+		return False
 
 	@staticmethod
 	def parse_as_key_value(kv_parts):
@@ -163,15 +189,23 @@ class ROS_Client(yandc.BaseClient):
 			if kv.find('=') != -1:
 				k, v = kv.split('=', 1)
 				if k in key_value:
-					raise yandc.Client_Exception('Key already seen - [{}]'.format(k))
+					raise GeneralError('Key already seen - [{}]'.format(k))
 				key_value[k] = v
 				last_key = k
 			elif last_key is not None:
 				key_value[last_key] = ' '.join([key_value[last_key], kv])
 			else:
-				raise yandc.Client_Exception(kv)
+				raise GeneralError(kv)
 
 		return key_value
+
+	def parse_print_as_value(self, as_values):
+		kv_list = []
+		for line in as_values.replace('.id=*', '\n.id=*').splitlines():
+			if line == '':
+				continue
+			kv_list.append(self.parse_as_key_value(line.split(';')))
+		return kv_list
 
 	@staticmethod
 	def print_concat(print_output):
@@ -195,7 +229,7 @@ class ROS_Client(yandc.BaseClient):
 				continue
 			key, value = line.split(':', 1)
 			if key in key_value:
-				raise yandc.Client_Exception('Key already seen - [{}]'.format(key))
+				raise GeneralError('Key already seen - [{}]'.format(key))
 			key_value[key.lstrip().rstrip()] = value.lstrip().rstrip()
 		return key_value
 
@@ -208,7 +242,7 @@ class ROS_Client(yandc.BaseClient):
 			if line_parts[0].isdigit():
 				index_seen = line_parts.pop(0)
 			else:
-				raise yandc.Client_Exception(line)
+				raise GeneralError(line)
 			flags_seen = ''
 			while True:
 				part = line_parts.pop(0)
@@ -222,11 +256,32 @@ class ROS_Client(yandc.BaseClient):
 			kv_list.append(self.parse_as_key_value(line_parts))
 		return kv_list
 
+	def ros_datetime(self):
+		system_clock = self.print_to_values(self.cli_command('/system clock print without-paging'))
+		date_string = '{} {} {}'.format(system_clock['date'], system_clock['time'], 'GMT')
+		return datetime.datetime.strptime(date_string, '%b/%d/%Y %H:%M:%S %Z')
+
+	def safe_mode_toggle(self):
+		if self.shell.channel.send(chr(0x18)) != 1:
+			raise GeneralError('send()')
+		shell_output, retries_left = self.shell.read_until_prompt(10)
+		if shell_output[1] == '[Safe Mode taken]':
+			if self._safe_mode_toggle == True:
+				raise GeneralError('Mismatch with safe mode flag')
+			self._safe_mode_toggle = True
+		elif shell_output[1] == '[Safe Mode released]':
+			if self._safe_mode_toggle == False:
+				raise GeneralError('Mismatch with safe mode flag')
+			self._safe_mode_toggle = False
+		else:
+			raise GeneralError(shell_output[1])
+		return self._safe_mode_toggle
+
 	def software_version(self):
 		if self.can_snmp():
 			return self.snmp_client.os_version()
 		elif self.can_ssh():
-			return self.print_to_values(self.ssh_command('/system resource print without-paging')).get('version', None)
+			return self.print_to_values(self.ssh_command('/system resource print without-paging')).get('version', '')
 		return ''
 
 	def ssh_command(self, *args, **kwargs):
@@ -234,21 +289,19 @@ class ROS_Client(yandc.BaseClient):
 			raise ValueError('No SSH client')
 		if not hasattr(self, 'shell'):
 			raise ValueError('No shell channel')
-		return self.shell.command(*args, **kwargs)
+		shell_output = self.shell.command(*args, **kwargs)
+		if self.shell.last_prompt.endswith(' <SAFE> '):
+			self._safe_mode_toggle = True
+		return shell_output
 
 	def system_package_enabled(self, package):
-		ssh_output = self.ssh_command('/system package print without-paging count-only where name ="{}" disabled=no'.format(package))
-		if ssh_output[0] != '0':
+		cli_output = self.cli_command('/system package print without-paging count-only where name ="{}" disabled=no'.format(package))
+		if cli_output[0] != '0':
 			return True
 		return False
-#		terse_output = self.ssh_command('/system package print without-paging terse')
-##		terse_output.pop()
-#		terse_values_indexed = self.index_values(self.print_to_values_structured(terse_output), 'name')
-#		if package in terse_values_indexed:
-#			return terse_values_indexed[package][0].get('flags', '').find('X') == -1
-#		return False
 
-	def to_seconds(self, time_format):
+	@staticmethod
+	def to_seconds(time_format):
 		seconds = minutes = hours = days = weeks = 0
 
 		n = ''
@@ -278,40 +331,45 @@ class ROS_Client(yandc.BaseClient):
 		return seconds
 
 	def to_seconds_date_time(self, date_time):
-		time_diff = datetime.datetime.now() - datetime.datetime.strptime(date_time, '%b/%d/%Y %H:%M:%S') + self._datetime_offset
+		try:
+			time_then = datetime.datetime.strptime(date_time, '%b/%d/%Y %H:%M:%S')
+		except ValueError as e:
+			return -1
+		time_diff = datetime.datetime.now() + self._datetime_offset - time_then
 		return int(time_diff.total_seconds())
 
 	@staticmethod
 	def vendor():
 		return 'Mikrotik'
 
-	def write_file_size_check(self, contents):
+	@staticmethod
+	def write_file_size_check(contents):
 		if len(contents) > 4095:
 			raise ValueError('Maximum file size exceeded')
 
 	def write_file_contents(self, name, contents=''):
 		self.write_file_size_check(contents)
-		cli_output = self.ssh_command('/file set {} contents="{}"'.format(name, contents))
+		cli_output = self.cli_command('/file set {} contents="{}"'.format(name, contents))
 		if cli_output != []:
-			raise yandc.Client_Exception('Cannot set contents - [{}]'.format(cli_output[0]))
+			raise GeneralError('Cannot set contents - [{}]'.format(cli_output[0]))
 		return True
 
 	def write_rsc_file(self, name, contents=''):
 		self.write_file_size_check(contents)
-		cli_output = self.ssh_command('/system routerboard export file={}'.format(name))
+		cli_output = self.cli_command('/system routerboard export file={}'.format(name))
 		if cli_output != []:
-			raise yandc.Client_Exception('Cannot create file - [{}]'.format(cli_output[0]))
+			raise GeneralError('Cannot create file - [{}]'.format(cli_output[0]))
 		return self.write_file_contents('{}.rsc'.format(name), contents)
 
 	def write_txt_file(self, name, contents=''):
 		self.write_file_size_check(contents)
-		cli_output = self.ssh_command('/file print file={}'.format(name))
+		cli_output = self.cli_command('/file print file={}'.format(name))
 		if cli_output != []:
-			raise yandc.Client_Exception('Cannot create file - [{}]'.format(cli_output[0]))
+			raise GeneralError('Cannot create file - [{}]'.format(cli_output[0]))
 		return self.write_file_contents('{}.txt'.format(name), contents)
 
 
-class SNMP_Client(yandc.snmp.Client):
+class SNMP_Client(snmp.SNMP_Client):
 	mtXRouterOs = (1, 3, 6, 1, 4, 1, 14988, 1, 1)
 	mtxrWireless =  mtXRouterOs + (1, )
 	mtxrWlStatTable = mtxrWireless + (1, )
@@ -551,14 +609,16 @@ class SNMP_Client(yandc.snmp.Client):
 		return str(self.get_oid(SNMP_Client.mtrxLicVersion))
 
 
-class SSH_Client(yandc.ssh.Client):
+class SSH_Client(ssh.SSH_Client):
 	pass
 
 
-class SSH_Shell(yandc.ssh.Shell):
+class Shell(ssh.Shell):
 	def exit(self):
-		return super(SSH_Shell, self).exit('/quit')
+		return super(Shell, self).exit('/quit')
+
+	control_char_regexp = re.compile(r'{}\[(9999B|c)'.format(chr(0x1B)))
 
 	def on_output_line(self, *args, **kwargs):
-		output_line = re.sub(chr(0x1B) + r'\[9999B', '', super(SSH_Shell, self).on_output_line(*args, **kwargs))
+		output_line = re.sub(Shell.control_char_regexp, '', super(Shell, self).on_output_line(*args, **kwargs))
 		return output_line.lstrip('\r')

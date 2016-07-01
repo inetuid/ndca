@@ -1,5 +1,13 @@
+"""Cisco IOS/IOS-XR
+"""
+
+__all__ = ['IOS_Client', 'XR_Client']
+__author__ = 'Matt Ryan'
+
 import re
-import yandc
+#
+from .vendor_base import BaseClient
+from . import snmp, ssh
 
 def ios_version(s):
 	re_match = re.match(r'Cisco IOS Software, .+, Version ([^\,]+),', s)
@@ -7,13 +15,8 @@ def ios_version(s):
 		return re_match.groups()[0]
 	return None
 
-class IOS_Client(yandc.BaseClient):
-	def __enter__(self):
-		return self
 
-	def __exit__(self, exception_type, exception_value, traceback):
-		self.disconnect()
-
+class IOS_Client(BaseClient):
 	def __init__(self, *args, **kwargs):
 		super(IOS_Client, self).__init__(*args, **kwargs)
 
@@ -25,7 +28,7 @@ class IOS_Client(yandc.BaseClient):
 			try:
 				if not snmp_client.sysObjectID().startswith('1.3.6.1.4.1.9.1'):
 					raise ValueError('Not a Cisco device')
-			except yandc.snmp.GetError:
+			except snmp.SNMP_Exception:
 				pass
 			else:
 				self.snmp_client = snmp_client
@@ -33,15 +36,16 @@ class IOS_Client(yandc.BaseClient):
 		if 'ssh_' in grouped_kwargs:
 			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
 
-			shell_prompt = yandc.ssh.ShellPrompt(yandc.ssh.ShellPrompt.regexp_prompt(r'.+[#>]$'))
-			shell_prompt.add_prompt(yandc.ssh.ShellPrompt.regexp_prompt(r'.+\(config[^\)]*\)#$'))
+			shell_prompt = ssh.ShellPrompt(ssh.ShellPrompt.regexp_prompt(r'.+[#>]$'))
+			shell_prompt.add_prompt(ssh.ShellPrompt.regexp_prompt(r'.+\(config[^\)]*\)#$'))
 
-			self.shell = SSH_Shell(self.ssh_client, shell_prompt)
+			self.shell = Shell(self.ssh_client, shell_prompt)
 			self.shell.channel.set_combine_stderr(True)
 			self.shell.command('terminal length 0')
 			self.shell.command('terminal no monitor')
 			self.shell.command('terminal width 160')
 
+		self._in_configure_mode = False
 
 	def cli_command(self, *args, **kwargs):
 		if self.can_ssh():
@@ -53,7 +57,7 @@ class IOS_Client(yandc.BaseClient):
 			try:
 				cli_output = self.ssh_command('configure terminal')
 				if not cli_output[0].startswith("'Enter configuration commands, one per line."):
-					self.in_configure_mode(True)
+					self._in_configure_mode = True
 				else:
 					raise ValueError(cli_output[0])
 
@@ -69,7 +73,7 @@ class IOS_Client(yandc.BaseClient):
 			finally:
 				cli_output = self.ssh_command('end')
 				if cli_output == []:
-					self.in_configure_mode(False)
+					self._in_configure_mode = False
 
 					return True
 				else:
@@ -83,8 +87,8 @@ class IOS_Client(yandc.BaseClient):
 
 		super(IOS_Client, self).disconnect()
 
-		if hasattr(self, '_in_configure_flag'):
-			del self._in_configure_flag
+		if hasattr(self, '_in_configure_mode'):
+			del self._in_configure_mode
 
 	def get_config(self, source='running', section=None):
 		if self.can_ssh():
@@ -94,27 +98,22 @@ class IOS_Client(yandc.BaseClient):
 			return self.ssh_command(config_command)
 		return []
 
-	def in_configure_mode(self, config_mode=None):
-		if config_mode is not None:
-			self._in_configure_flag = config_mode
-
-		last_prompt = self.shell.last_prompt()
-		prompt_length = len(last_prompt)
-
-		if prompt_length > 9:
-			prompt_part = last_prompt[prompt_length - 9:]
-
-			if config_mode:
-				if prompt_part != '(config)#':
-					raise ValueError('Mistmatch between in_configure_mode(' + str(config_mode) + ') and prompt [' + last_prompt + ']')
-			else:
-				if prompt_part == '(config)#':
-					raise ValueError('Mistmatch between in_configure_mode(' + str(config_mode) + ') and prompt [' + last_prompt + ']')
-
-		return getattr(self, '_in_configure_flag', False)
+	@property
+	def in_configure_mode(self):
+		mode_mismatch = False
+		config_prompt = self.shell.last_prompt.endswith('(config)#')
+		if self._in_configure_mode:
+			if not config_prompt:
+				mode_mismatch = True
+		else:
+			if config_prompt:
+				mode_mismatch = True
+		if mode_mismatch:
+			raise ValueError('Mistmatch between in_configure_mode [{}] and prompt [{}]'.format(self._in_configure_mode, self.shell.last_prompt))
+		return self._in_configure_mode
 		
 	def persist_configuration(self):
- 		if self.in_configure_mode():
+ 		if self.in_configure_mode:
  			pass
  
  		cli_output = self.ssh_command('write memory')
@@ -148,7 +147,7 @@ class IOS_Client(yandc.BaseClient):
 		return 'Cisco_IOS'
 
 
-class SNMP_Client(yandc.snmp.Client):
+class SNMP_Client(snmp.SNMP_Client):
 	def __init__(self, *args, **kwargs):
 		super(SNMP_Client, self).__init__(*args, **kwargs)
 
@@ -156,22 +155,16 @@ class SNMP_Client(yandc.snmp.Client):
 		return ios_version(self.sysDescr())
 
 
-class SSH_Client(yandc.ssh.Client):
+class SSH_Client(ssh.SSH_Client):
 	pass
 
 
-class SSH_Shell(yandc.ssh.Shell):
+class Shell(ssh.Shell):
 	def exit(self):
-		return super(SSH_Shell, self).exit('logout')
+		return super(Shell, self).exit('logout')
 
 
-class XR_Client(yandc.BaseClient):
-	def __enter__(self):
-		return self
-
-	def __exit__(self, exception_type, exception_value, traceback):
-		self.disconnect()
-
+class XR_Client(BaseClient):
 	def __init__(self, *args, **kwargs):
 		pass
 

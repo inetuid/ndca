@@ -1,6 +1,13 @@
+"""Arista EOS
+"""
+
+__all__ = ['EOS_Client']
+
 import json
 import re
-import yandc
+#
+from .vendor_base import BaseClient
+from . import snmp, ssh
 
 have_pyeapi = False
 
@@ -11,13 +18,8 @@ except ImportError:
 else:
 	have_pyeapi = True
 
-class EOS_Client(yandc.BaseClient):
-	def __enter__(self):
-		return self
 
-	def __exit__(self, exception_type, exception_value, traceback):
-		self.disconnect()
-
+class EOS_Client(BaseClient):
 	def __init__(self, *args, **kwargs):
 		super(EOS_Client, self).__init__(*args, **kwargs)
 
@@ -28,7 +30,7 @@ class EOS_Client(yandc.BaseClient):
 			try:
 				if not snmp_client.sysObjectID().startswith('1.3.6.1.4.1.30065.1'):
 					raise ValueError('Not an Arista device')
-			except yandc.snmp.GetError:
+			except snmp.SNMP_Exception:
 				pass
 			else:
 				self.snmp_client = snmp_client
@@ -56,15 +58,17 @@ class EOS_Client(yandc.BaseClient):
 
 			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
 
-			shell_prompt = yandc.ssh.ShellPrompt(yandc.ssh.ShellPrompt.regexp_prompt(r'.+[#>]$'))
-			shell_prompt.add_prompt(yandc.ssh.ShellPrompt.regexp_prompt(r'.+\(config[^\)]*\)#$'))
+			shell_prompt = ssh.ShellPrompt(ssh.ShellPrompt.regexp_prompt(r'.+[#>]$'))
+			shell_prompt.add_prompt(ssh.ShellPrompt.regexp_prompt(r'.+\(config[^\)]*\)#$'))
 
-			self.shell = SSH_Shell(self.ssh_client, shell_prompt)
+			self.shell = Shell(self.ssh_client, shell_prompt)
 			self.shell.channel.set_combine_stderr(True)
 			self.shell.command('terminal dont-ask')
 			self.shell.command('terminal length 0')
 			self.shell.command('no terminal monitor')
 			self.shell.command('terminal width 160')
+
+		self._in_configure_mode = False
 
 	def can_eapi(self):
 		if hasattr(self, '_pyeapi_node'):
@@ -78,7 +82,7 @@ class EOS_Client(yandc.BaseClient):
 			return self.ssh_command(*args, **kwargs)
 		raise Exception('No valid CLI handlers')
 
-	def configure_via_cli(self, new_config):
+	def configure_via_cli(self, new_config=[]):
 		if self.can_eapi():
 			try:
 				config_output = self._pyeapi_node.config(new_config)
@@ -94,13 +98,12 @@ class EOS_Client(yandc.BaseClient):
 			try:
 				cli_output = self.ssh_command('configure terminal')
 				if cli_output == []:
-					self.in_configure_mode(True)
+					self._in_configure_mode = True
 				else:
 					raise ValueError(cli_output[0])
 
 				for config_line in new_config:
 					stripped_line = config_line.lstrip().rstrip()
-
 					if stripped_line in ['end', 'exit']:
 						warnings.warn('Skipping ' + config_line)
 						continue
@@ -111,7 +114,7 @@ class EOS_Client(yandc.BaseClient):
 			finally:
 				cli_output = self.ssh_command('end')
 				if cli_output == []:
-					self.in_configure_mode(False)
+					self._in_configure_mode = False
 					return True
 				else:
 					raise ValueError(cli_output[0])
@@ -127,10 +130,9 @@ class EOS_Client(yandc.BaseClient):
 
 		super(EOS_Client, self).disconnect()
 
-		if hasattr(self, '_in_configure_flag'):
-			del self._in_configure_flag
+		if hasattr(self, '_in_configure_mode'):
+			del self._in_configure_mode
 
-	@yandc.ssh.debug
 	def eapi_command(self, *args, **kwargs):
 		if self.can_eapi():
 			if 'encoding' in kwargs and kwargs['encoding'] == 'json':
@@ -161,27 +163,22 @@ class EOS_Client(yandc.BaseClient):
 			return self.ssh_command(config_command)
 		return []
 
-	def in_configure_mode(self, config_mode=None):
-		if config_mode is not None:
-			self._in_configure_flag = config_mode
-
-		last_prompt = self.shell.last_prompt()
-		prompt_length = len(last_prompt)
-
-		if prompt_length > 9:
-			prompt_part = last_prompt[prompt_length - 9:]
-
-			if config_mode:
-				if prompt_part != '(config)#':
-					raise ValueError('Mistmatch between in_configure_mode(' + str(config_mode) + ') and prompt [' + last_prompt + ']')
-			else:
-				if prompt_part == '(config)#':
-					raise ValueError('Mistmatch between in_configure_mode(' + str(config_mode) + ') and prompt [' + last_prompt + ']')
-
-		return getattr(self, '_in_configure_flag', False)
+	@property
+	def in_configure_mode(self):
+		mode_mismatch = False
+		config_prompt = self.shell.last_prompt.endswith('(config)#')
+		if self._in_configure_mode:
+			if not config_prompt:
+				mode_mismatch = True
+		else:
+			if config_prompt:
+				mode_mismatch = True
+		if mode_mismatch:
+			raise ValueError('Mistmatch between in_configure_mode [{}] and prompt [{}]'.format(self._in_configure_mode, self.shell.last_prompt))
+		return self._in_configure_mode
 
 	def persist_configuration(self):
-		if self.in_configure_mode():
+		if self.in_configure_mode:
 			pass
 
 		cli_output = self.cli_command('copy running-config startup-config')
@@ -190,7 +187,7 @@ class EOS_Client(yandc.BaseClient):
 		return True
 
 	def privilege_level(self):
-		cli_output = self.ssh_command('show privilege')
+		cli_output = self.cli_command('show privilege')
 		if not cli_output[0].startswith('Current privilege level is '):
 			raise ValueError(cli_output)
 		return int(cli_output[0][27:])
@@ -216,7 +213,7 @@ class EOS_Client(yandc.BaseClient):
 		return 'Arista'
 
 
-class SNMP_Client(yandc.snmp.Client):
+class SNMP_Client(snmp.SNMP_Client):
 	def os_version(self):
 		re_match = re.match(r'Arista Networks EOS version (.+) running on an Arista Networks (.+)$', self.sysDescr())
 		if re_match is not None:
@@ -224,10 +221,10 @@ class SNMP_Client(yandc.snmp.Client):
 		return None
 
 
-class SSH_Client(yandc.ssh.Client):
+class SSH_Client(ssh.SSH_Client):
 	pass
 
 
-class SSH_Shell(yandc.ssh.Shell):
+class Shell(ssh.Shell):
 	def exit(self):
-		return super(SSH_Shell, self).exit('logout')
+		return super(Shell, self).exit('logout')

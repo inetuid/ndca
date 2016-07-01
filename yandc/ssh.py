@@ -1,31 +1,16 @@
-import paramiko
+"""SSH Helper
+"""
+
+__all__ = ['SSH_Client', 'Shell', 'ShellPrompt', 'SSH_Exception', 'AuthenticationError', 'ConnectError']
+__author__ = 'Matt Ryan'
+
 import re
 import socket
-import sys
-
-def debug(func):
-	def func_wrapper(*args, **kwargs):
-		result = func(*args, **kwargs)
-		if isinstance(result, str):
-			sys.stderr.write('DEBUG: %s(%s, %s) = [%s][%s]\n' % (func.__name__, args, kwargs, result, result.encode('hex')))
-		else:
-			sys.stderr.write('DEBUG: %s(%s, %s) = [%s]\n' % (func.__name__, args, kwargs, result))
-		return result
-	return func_wrapper
-
-class SSH_Exception(Exception):
-	pass
+#
+import paramiko
 
 
-class AuthenticationError(SSH_Exception):
-	pass
-
-
-class ConnectError(SSH_Exception):
-	pass
-
-
-class Client(object):
+class SSH_Client(object):
 	def __del__(self):
 		self.disconnect()
 
@@ -103,10 +88,6 @@ class Client(object):
 		sftp.close()
 
 
-class CommandError(SSH_Exception):
-	pass
-
-
 class Shell(object):
 	def __del__(self):
 		self.exit()
@@ -118,7 +99,7 @@ class Shell(object):
 		self.exit()
 
 	def __init__(self, ssh_client, shell_prompt, terminal_type='dumb'):
-		assert isinstance(ssh_client, Client)
+		assert isinstance(ssh_client, SSH_Client)
 		assert isinstance(shell_prompt, ShellPrompt)
 
 		self.ssh_client = ssh_client
@@ -142,26 +123,26 @@ class Shell(object):
 
 	def command(self, command, prompt_retries=40):
 		send_command = command.rstrip('\r\n')
-		if self.send(send_command + '\r') != (len(send_command) + 1):
-			raise CommandError('Did not send all of command')
+		if self.channel.send(send_command + '\r') != (len(send_command) + 1):
+			raise SSH_Exception('Did not send all of command')
 		if prompt_retries:
 			while range(10, 0, -1):
 				raw_output = self._gets()
 				if raw_output != '':
 					output_line = self.on_output_line(raw_output)
 					if output_line != send_command:
-						raise CommandError('Command echo mismatch')
+						raise SSH_Exception('Command echo mismatch')
 					break
 			else:
-				raise CommandError('Command not echoed')
+				raise SSH_Exception('Command not echoed')
 		output, retries_left = self.read_until_prompt(prompt_retries)
 		if prompt_retries != 0 and retries_left == 0:
-			raise CommandError('Prompt not seen')
+			raise SSH_Exception('Prompt not seen')
 		return output
 
 	def exit(self, exit_command='exit'):
 		if hasattr(self, 'channel'):
-			self.send(exit_command)
+			self.channel.send(exit_command)
 			self.channel.close()
 			del self.channel
 		if hasattr(self, 'prompt'):
@@ -194,12 +175,6 @@ class Shell(object):
 					break
 				output.append(output_line)
 		return (output, prompt_retries)
-
-	def send(self, to_send):
-		try:
-			return self.channel.send(to_send)
-		except Exception as e:
-			raise SSH_Exception(e.message)
 
 	@staticmethod
 	def _getc(chan):
@@ -273,3 +248,15 @@ class ShellPrompt(object):
 	@staticmethod
 	def regexp_prompt(re_prompt):
 		return dict(prompt_type='regexp', prompt_value=re_prompt, prompt_regexp=re.compile(re_prompt))
+
+
+class SSH_Exception(Exception):
+	pass
+
+
+class AuthenticationError(SSH_Exception):
+	pass
+
+
+class ConnectError(SSH_Exception):
+	pass

@@ -1,7 +1,16 @@
-import re
-import yandc
+"""" Cumulus Linux
+"""
 
-class CL_Client(yandc.BaseClient):
+__all__ = ['CL_Client']
+__author__ = 'Matt Ryan'
+
+import re
+#
+from .vendor_base import BaseClient
+from . import snmp, ssh
+
+
+class CL_Client(BaseClient):
 	def __init__(self, *args, **kwargs):
 		super(CL_Client, self).__init__(*args, **kwargs)
 
@@ -12,7 +21,7 @@ class CL_Client(yandc.BaseClient):
 			try:
 				if not snmp_client.sysObjectID().startswith('1.3.6.1.4.1.40310'):
 					raise Exception('Not a Cumulus device')
-			except snmp.GetError:
+			except snmp.SNMP_Exception:
 				pass
 			else:
 				self.snmp_client = snmp_client
@@ -26,11 +35,11 @@ class CL_Client(yandc.BaseClient):
 
 			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
 
-			shell_prompt = yandc.ssh.ShellPrompt(yandc.ssh.ShellPrompt.regexp_prompt(r'[^@]+@[^\$]+\$ '))
+			shell_prompt = ssh.ShellPrompt(ssh.ShellPrompt.regexp_prompt(r'[^@]+@[^\$]+\$ '))
 			if self.can_snmp() and 'username' in grouped_kwargs['ssh_']:
 				shell_prompt.add_prompt(grouped_kwargs['ssh_']['username'] + '@' + self.snmp_client.sysName() + '$ ')
 
-			self.shell = SSH_Shell(self.ssh_client, shell_prompt)
+			self.shell = Shell(self.ssh_client, shell_prompt)
 
 	def cli_command(self, *args, **kwargs):
 		return self.ssh_command(*args, **kwargs)
@@ -72,14 +81,14 @@ class CL_Client(yandc.BaseClient):
 		return 'Cumulus'
 
 
-class SNMP_Client(yandc.snmp.Client):
+class SNMP_Client(snmp.SNMP_Client):
 	pass
 
 
-class SSH_Client(yandc.ssh.Client):
+class SSH_Client(ssh.SSH_Client):
 	pass
 
 
-class SSH_Shell(yandc.ssh.Shell):
+class Shell(ssh.Shell):
 	def exit(self):
-		return super(SSH_Shell, self).exit('logout')
+		return super(Shell, self).exit('logout')

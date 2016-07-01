@@ -1,28 +1,27 @@
-import arista
-import cisco
-import cumulus
-import mikrotik
-import yandc
+from .vendor_base import BaseClient
+from .snmp import SNMP_Client
+from yandc import *
+
 
 class Client(object):
 	def __new__(cls, *args, **kwargs):
 		assert 'host' in kwargs, 'No host specified'
 
-		grouped_kwargs = yandc.BaseClient.group_kwargs('snmp_', **kwargs)
+		grouped_kwargs = BaseClient.group_kwargs('snmp_', **kwargs)
 
 		if not 'snmp_' in grouped_kwargs:
 			raise Exception('No SNMP details specified')
 
-		vendor = yandc.snmp.Client(kwargs['host'], **grouped_kwargs['snmp_']).enterprise()[0]
+		vendor = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_']).enterprise()[0]
 
 		if vendor == 'Arista':
-			return arista.EOS_Client(*args, **kwargs)
+			return EOS_Client(*args, **kwargs)
 		elif vendor == 'Cisco':
-			return cisco.IOS_Client(*args, **kwargs)
+			return IOS_Client(*args, **kwargs)
 		elif vendor == 'Cumulus':
-			return cumulus.CL_Client(*args, **kwargs)
+			return CL_Client(*args, **kwargs)
 		elif vendor == 'Mikrotik':
-			return mikrotik.ROS_Client(*args, **kwargs)
+			return ROS_Client(*args, **kwargs)
 
 	def software_version(self):
 		raise NotImplementedError('software_version()')
