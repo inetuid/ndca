@@ -8,7 +8,7 @@ If SNMP is available, the factory class will automatically detect the device and
 Example:
 
 ```
-import yandc
+import yandc.factory
 
 with yandc.factory.Client(<HOST_OR_IP>, snmp_community=<MY_COMMUNITY>, username=<MY_USERNAME>, password=<MY_PASSWORD>) as yandc_client:
     print yandc.client.software_version()
