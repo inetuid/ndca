@@ -1,5 +1,9 @@
-import atexit
-import warnings
+"""Base Class
+"""
+
+__all__ = ['BaseClient']
+__author__ = 'Matt Ryan'
+
 
 class BaseClient(object):
 	def __del__(self):
@@ -13,7 +17,6 @@ class BaseClient(object):
 
 	def __init__(self, *args, **kwargs):
 		assert 'host' in kwargs, 'No host specified'
-		atexit.register(self.disconnect)
 
 	def can_snmp(self):
 		if hasattr(self, 'snmp_client'):
