@@ -1,5 +1,4 @@
-"""" Cumulus Linux
-"""
+"""Cumulus Linux"""
 
 __all__ = ['CL_Client']
 __author__ = 'Matt Ryan'

@@ -84,11 +84,7 @@ class IOS_Client(BaseClient):
 		if self.can_ssh() and hasattr(self, 'shell'):
 			self.shell.exit()
 			del self.shell
-
 		super(IOS_Client, self).disconnect()
-
-		if hasattr(self, '_in_configure_mode'):
-			del self._in_configure_mode
 
 	def get_config(self, source='running', section=None):
 		if self.can_ssh():
@@ -162,6 +158,14 @@ class SSH_Client(ssh.SSH_Client):
 class Shell(ssh.Shell):
 	def exit(self):
 		return super(Shell, self).exit('logout')
+
+
+try:
+	import pyiosxr
+except ImportError:
+	have_pyiosxr = False
+else:
+	have_pyiosxr = True
 
 
 class XR_Client(BaseClient):
