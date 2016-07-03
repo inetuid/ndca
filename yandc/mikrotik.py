@@ -1,5 +1,4 @@
-"""Mikrotik ROS
-"""
+"""Mikrotik ROS"""
 
 __all__ = ['ROS_Client']
 __author__ = 'Matt Ryan'
@@ -11,12 +10,10 @@ import time
 from .vendor_base import BaseClient
 from . import snmp, ssh
 
-have_rosapi = False
-
 try:
 	import rosapi
 except ImportError:
-	pass
+	have_rosapi = False
 else:
 	have_rosapi = True
 
@@ -97,13 +94,7 @@ class ROS_Client(BaseClient):
 					self.safe_mode_toggle()
 			self.shell.exit()
 			del self.shell
-
 		super(ROS_Client, self).disconnect()
-
-		if hasattr(self, '_datetime_offset'):
-			del self._datetime_offset
-		if hasattr(self, '_safe_mode_toggle') :
-			del self._safe_mode_toggle
 
 	def export_concat(self, export_config):
 		concat_output = []
@@ -145,6 +136,11 @@ class ROS_Client(BaseClient):
 			if_type = 'pppoe-client'
 		terse_output = self.cli_command('/interface {} print without-paging terse where name="{}"'.format(if_type, if_name))
 		return self.print_to_values_structured(terse_output)
+
+	def is_mikrotik(self, sys_object_id):
+		if sys_object_id.startswith('1.3.6.1.4.1.14988.1'):
+			return True
+		return False
 
 	def in_configure_mode(self, *args, **kwargs):
 		return False
@@ -294,9 +290,17 @@ class ROS_Client(BaseClient):
 			self._safe_mode_toggle = True
 		return shell_output
 
-	def system_package_enabled(self, package):
+	def Xsystem_package_enabled(self, package):
 		cli_output = self.cli_command('/system package print without-paging count-only where name ="{}" disabled=no'.format(package))
 		if cli_output[0] != '0':
+			return True
+		return False
+
+	def system_package_enabled(self, package):
+		if not hasattr(self, '_system_packages'):
+			cli_command = '/system package print without-paging terse'
+			self._system_packages = self.index_values(self.print_to_values_structured(self.cli_command(cli_command)), 'name')
+		if self._system_packages.get(package)[0].get('flags', '').find('X') == -1:
 			return True
 		return False
 
