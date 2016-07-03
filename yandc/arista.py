@@ -1,5 +1,4 @@
-"""Arista EOS
-"""
+"""Arista EOS"""
 
 __all__ = ['EOS_Client']
 
@@ -9,12 +8,10 @@ import re
 from .vendor_base import BaseClient
 from . import snmp, ssh
 
-have_pyeapi = False
-
 try:
 	import pyeapi
 except ImportError:
-	pass
+	have_pyeapi = False
 else:
 	have_pyeapi = True
 
@@ -123,15 +120,10 @@ class EOS_Client(BaseClient):
 	def disconnect(self):
 		if self.can_eapi():
 			del self._pyeapi_node
-
 		if self.can_ssh() and hasattr(self, 'shell'):
 			self.shell.exit()
 			del self.shell
-
 		super(EOS_Client, self).disconnect()
-
-		if hasattr(self, '_in_configure_mode'):
-			del self._in_configure_mode
 
 	def eapi_command(self, *args, **kwargs):
 		if self.can_eapi():
@@ -162,6 +154,12 @@ class EOS_Client(BaseClient):
 				config_command += ' | section {}'.format(section)
 			return self.ssh_command(config_command)
 		return []
+
+	@staticmethod
+	def is_arista(sys_object_id):
+		if sys_object_id.startswith('1.3.6.1.4.1.30065.1'):
+			return True
+		return False
 
 	@property
 	def in_configure_mode(self):
