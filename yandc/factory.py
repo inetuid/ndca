@@ -12,15 +12,15 @@ class Client(object):
 		if not 'snmp_' in grouped_kwargs:
 			raise Exception('No SNMP details specified')
 
-		vendor = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_']).enterprise()[0]
+		vendor, sys_object_id = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_']).enterprise()
 
-		if vendor == 'Arista':
+		if EOS_Client.is_arista(sys_object_id):
 			return EOS_Client(*args, **kwargs)
 		elif vendor == 'Cisco':
 			return IOS_Client(*args, **kwargs)
 		elif vendor == 'Cumulus':
 			return CL_Client(*args, **kwargs)
-		elif vendor == 'Mikrotik':
+		elif ROS_Client.is_mikrotik(sys_object_id):
 			return ROS_Client(*args, **kwargs)
 
 	def software_version(self):
