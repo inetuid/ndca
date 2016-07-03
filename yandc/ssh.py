@@ -29,7 +29,6 @@ class SSH_Client(object):
 
 		try:
 			sock = socket.create_connection((host, tcp_port), connect_timeout)
-#			sock.settimeout(None)
 			paramiko_transport = paramiko.Transport(sock)
 			paramiko_transport.connect()
 		except socket.error as error:
@@ -103,7 +102,7 @@ class Shell(object):
 		assert isinstance(shell_prompt, ShellPrompt)
 
 		self.ssh_client = ssh_client
-		self.prompt = shell_prompt
+		self.shell_prompt = shell_prompt
 		self.last_prompt = ''
 
 		self.channel = ssh_client.channel()
@@ -117,7 +116,7 @@ class Shell(object):
 			if len(banner) == 0:
 				raise SSH_Exception('Cannot auto-detect prompt')
 			timeout_prompt = banner.pop()
-			self.prompt.add_prompt(timeout_prompt)
+			self.shell_prompt.add_prompt(timeout_prompt)
 			self.command('\n', 5)
 		self.on_banner(banner)
 
@@ -145,12 +144,6 @@ class Shell(object):
 			self.channel.send(exit_command)
 			self.channel.close()
 			del self.channel
-		if hasattr(self, 'prompt'):
-			del self.prompt
-		if hasattr(self, 'ssh_client'):
-			del self.ssh_client
-		if hasattr(self, 'last_prompt'):
-			del self.last_prompt
 
 	def on_banner(self, banner):
 		pass
@@ -169,7 +162,7 @@ class Shell(object):
 				prompt_retries -= 1
 			else :
 				output_line = self.on_output_line(raw_output)
-				if self.prompt.is_prompt(output_line):
+				if self.shell_prompt.is_prompt(output_line):
 					self.last_prompt = output_line
 					self.on_prompt(output_line)
 					break
@@ -194,17 +187,14 @@ class Shell(object):
 		return None
 
 	def _gets(self):
-#		s = ''
 		s = []
 		while True:
 			c = self._getc(self.channel)
 			if c is None:
 				break
-#			s += c
 			s.append(c)
 			if c == '\n':
 				break
-#		return s
 		return ''.join(s)
 
 
@@ -230,19 +220,16 @@ class ShellPrompt(object):
 	def is_prompt(self, candidate_prompt):
 		if candidate_prompt in self.prompts and self.prompts[candidate_prompt]['prompt_type'] is basestring:
 			return True
-
 		for key, value in self.prompts.iteritems():
 			if value['prompt_type'] is basestring:
 				continue
-				if candidate_prompt == value['prompt_value']:
-					return True
+#				if candidate_prompt == value['prompt_value']:
+#					return True
 			elif value['prompt_type'] == 'regexp':
 				if re.match(value['prompt_regexp'], candidate_prompt):
 					return True
 			else:
-				continue
 				raise TypeError('Unsupported prompt type - [{}]'.format(value['prompt_type']))
-
 		return False
 
 	@staticmethod
