@@ -36,7 +36,8 @@ class BaseClient(object):
 			self.snmp_client.disconnect()
 			del self.snmp_client
 		if self.can_ssh():
-			self.ssh_client.disconnect()
+			if self.ssh_client.is_active():
+				self.ssh_client.disconnect()
 			del self.ssh_client
 
 	@staticmethod
@@ -53,7 +54,7 @@ class BaseClient(object):
 
 	def snmp_get(self, oid):
 		if not self.can_snmp():
-			raise Client_Exception('No SNMP client')
+			raise yandc.Client_Exception('No SNMP client')
 		return self.snmp_client.get_oid(self.snmp_client.format_oid(oid))
 
 	def snmp_walk(self, oid):
@@ -63,3 +64,7 @@ class BaseClient(object):
 
 	def software_version(self):
 		raise NotImplementedError
+
+
+class Client_Exception(Exception):
+	pass
