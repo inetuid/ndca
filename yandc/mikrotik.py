@@ -61,10 +61,22 @@ class ROS_Client(BaseClient):
 			self.shell.channel.set_combine_stderr(True)
 
 			self._datetime_offset = datetime.datetime.now() - self.ros_datetime()
-			self._safe_mode_toggle = False
 
-	def cli_command(self, *args, **kwargs):
-		return self.ssh_command(*args, **kwargs)
+	def cli_command(self, command, *args, **kwargs):
+		if not hasattr(self, '_cli_output_cache'):
+			self._cli_output_cache = {}
+		use_cache = kwargs.pop('use_cache', False)
+		if use_cache:
+			if command in self._cli_output_cache:
+				print 'CACHE - [{}]'.format(command)
+				return self._cli_output_cache[command]
+		else:
+			self._cli_output_cache.pop(command, None)
+			print 'RUN - [{}]'.format(command)
+		ssh_output = self.ssh_command(command, *args, **kwargs)
+		if use_cache:
+			self._cli_output_cache[command] = ssh_output
+		return ssh_output
 		raise GeneralError('No CLI handler')
 
 	def can_rosapi(self):
@@ -73,12 +85,12 @@ class ROS_Client(BaseClient):
 		return False
 
 	def configure_via_cli(self, config_commands=[]):
-		if not self._safe_mode_toggle:
+		if not getattr(self, '_safe_mode_toggle', False):
 			if not self.safe_mode_toggle():
 				self.safe_mode_toggle()
 
 		for config_line in config_commands:
-			cli_output = self.cli_command(config_line)
+			cli_output = self.cli_command(config_line, use_cache=False)
 			if cli_output != []:
 				raise ValueError(cli_output[0])
 
@@ -89,7 +101,7 @@ class ROS_Client(BaseClient):
 		if self.can_rosapi():
 			pass
 		if self.can_ssh() and hasattr(self, 'shell'):
-			if self._safe_mode_toggle:
+			if getattr(self, '_safe_mode_toggle', False):
 				if self.safe_mode_toggle():
 					self.safe_mode_toggle()
 			self.shell.exit()
@@ -118,15 +130,16 @@ class ROS_Client(BaseClient):
 		return concat_output
 
 	def file_exists(self, filename):
-		cli_output = self.cli_command('/file print without-paging count-only where name="{}"'.format(filename))
-		if cli_output[0] != '0':
+		cli_output = self.cli_command('/file print without-paging terse')
+		indexed_values = self.index_values(self.print_to_values_structured(cli_output))
+		if filename in indexed_values:
 			return True
 		return False
 
 	def get_config(self, source=None, section=None):
 		if section is not None:
-			return self.cli_command('/' + section + ' export verbose')
-		return self.cli_command('/export verbose')
+			return self.cli_command('/' + section + ' export verbose', use_cache=False)
+		return self.cli_command('/export verbose', use_cache=False)
 
 	def get_interface_config(self, if_name):
 		if_type = self.interface_type(if_name)
@@ -134,19 +147,15 @@ class ROS_Client(BaseClient):
 			if_type = 'ethernet'
 		elif if_type == 'pppoe-out':
 			if_type = 'pppoe-client'
-		terse_output = self.cli_command('/interface {} print without-paging terse where name="{}"'.format(if_type, if_name))
-		return self.print_to_values_structured(terse_output)
-
-	def is_mikrotik(self, sys_object_id):
-		if sys_object_id.startswith('1.3.6.1.4.1.14988.1'):
-			return True
-		return False
+		cli_output = self.cli_command('/interface {} print without-paging terse'.format(if_type))
+		indexed_values = self.index_values(self.print_to_values_structured(cli_output))
+		return indexed_values.get(if_name)
 
 	def in_configure_mode(self, *args, **kwargs):
 		return False
 
 	@staticmethod
-	def index_values(values, key='index'):
+	def index_values(values, key='name'):
 		values_indexed = {}
 		for v in values:
 			if key in v:
@@ -158,11 +167,11 @@ class ROS_Client(BaseClient):
 		return values_indexed
 
 	def interface_type(self, if_name):
-		terse_output = self.cli_command('/interface print without-paging terse where name="{}"'.format(if_name))
-		if terse_output[0] == '':
-			return None
-#		terse_output.pop()
-		return self.print_to_values_structured(terse_output)[0].get('type', None)
+		cli_output = self.cli_command('/interface print without-paging terse', use_cache=True)
+		indexed_values = self.index_values(self.print_to_values_structured(cli_output))
+		if if_name in indexed_values:
+			return indexed_values[if_name][0].get('type')
+		return None
 
 	def interfaces(self):
 		if self.can_snmp():
@@ -176,32 +185,51 @@ class ROS_Client(BaseClient):
 			return True
 		return False
 
+	def is_mikrotik(self, sys_object_id):
+		if sys_object_id.startswith('1.3.6.1.4.1.14988.1'):
+			return True
+		return False
+
+	def is_slave_interface(self, if_name):
+		cli_output = self.cli_command('/interface print without-paging terse', use_cache=True)
+		indexed_values = self.index_values(self.print_to_values_structured(cli_output))
+		return indexed_values.get(if_name, [])[0].get('flags', '').find('S') == -1
+
+	def master_port(self, if_name):
+		cli_output = self.cli_command('/interface ethernet print without-paging terse', use_cache=True)
+		indexed_values = self.index_values(self.print_to_values_structured(cli_output))
+		if if_name in indexed_values:
+			master_port = indexed_values[if_name][0].get('master-port')
+			if master_port is not None and master_port != 'none':
+				return master_port
+		return None
+
 	@staticmethod
 	def parse_as_key_value(kv_parts):
-		key_value = {}
+		as_key_value = {}
 
 		last_key = None
 		for kv in kv_parts:
 			if kv.find('=') != -1:
 				k, v = kv.split('=', 1)
-				if k in key_value:
+				if k in as_key_value:
 					raise GeneralError('Key already seen - [{}]'.format(k))
-				key_value[k] = v
+				as_key_value[k] = v
 				last_key = k
 			elif last_key is not None:
-				key_value[last_key] = ' '.join([key_value[last_key], kv])
+				as_key_value[last_key] = ' '.join([as_key_value[last_key], kv])
 			else:
 				raise GeneralError(kv)
 
-		return key_value
+		return as_key_value
 
 	def parse_print_as_value(self, as_values):
-		kv_list = []
+		as_value = []
 		for line in as_values.replace('.id=*', '\n.id=*').splitlines():
 			if line == '':
 				continue
-			kv_list.append(self.parse_as_key_value(line.split(';')))
-		return kv_list
+			as_value.append(self.parse_as_key_value(line.split(';')))
+		return as_value
 
 	@staticmethod
 	def print_concat(print_output):
@@ -219,18 +247,18 @@ class ROS_Client(BaseClient):
 
 	@staticmethod
 	def print_to_values(print_output):
-		key_value = {}
+		to_values = {}
 		for line in print_output:
 			if len(line) == 0:
 				continue
 			key, value = line.split(':', 1)
-			if key in key_value:
+			if key in to_values:
 				raise GeneralError('Key already seen - [{}]'.format(key))
-			key_value[key.lstrip().rstrip()] = value.lstrip().rstrip()
-		return key_value
+			to_values[key.lstrip().rstrip()] = value.lstrip().rstrip()
+		return to_values
 
 	def print_to_values_structured(self, print_output):
-		kv_list = []
+		to_values_structured = []
 		for line in print_output:
 			line_parts = line.lstrip().rstrip().split()
 			if len(line_parts) == 0:
@@ -238,7 +266,7 @@ class ROS_Client(BaseClient):
 			if line_parts[0].isdigit():
 				index_seen = line_parts.pop(0)
 			else:
-				raise GeneralError(line)
+				index_seen = -1
 			flags_seen = ''
 			while True:
 				part = line_parts.pop(0)
@@ -249,11 +277,11 @@ class ROS_Client(BaseClient):
 					line_parts.insert(0, 'flags={}'.format(flags_seen))
 					line_parts.insert(0, 'index={}'.format(index_seen))
 					break
-			kv_list.append(self.parse_as_key_value(line_parts))
-		return kv_list
+			to_values_structured.append(self.parse_as_key_value(line_parts))
+		return to_values_structured
 
 	def ros_datetime(self):
-		system_clock = self.print_to_values(self.cli_command('/system clock print without-paging'))
+		system_clock = self.print_to_values(self.cli_command('/system clock print without-paging', use_cache=False))
 		date_string = '{} {} {}'.format(system_clock['date'], system_clock['time'], 'GMT')
 		return datetime.datetime.strptime(date_string, '%b/%d/%Y %H:%M:%S %Z')
 
@@ -261,12 +289,14 @@ class ROS_Client(BaseClient):
 		if self.shell.channel.send(chr(0x18)) != 1:
 			raise GeneralError('send()')
 		shell_output, retries_left = self.shell.read_until_prompt(10)
+		if len(shell_output) < 2:
+			raise Exception(shell_output[0])
 		if shell_output[1] == '[Safe Mode taken]':
-			if self._safe_mode_toggle == True:
+			if getattr(self, '_safe_mode_toggle', False) == True:
 				raise GeneralError('Mismatch with safe mode flag')
 			self._safe_mode_toggle = True
 		elif shell_output[1] == '[Safe Mode released]':
-			if self._safe_mode_toggle == False:
+			if getattr(self, '_safe_mode_toggle', False) == False:
 				raise GeneralError('Mismatch with safe mode flag')
 			self._safe_mode_toggle = False
 		else:
@@ -290,19 +320,10 @@ class ROS_Client(BaseClient):
 			self._safe_mode_toggle = True
 		return shell_output
 
-	def Xsystem_package_enabled(self, package):
-		cli_output = self.cli_command('/system package print without-paging count-only where name ="{}" disabled=no'.format(package))
-		if cli_output[0] != '0':
-			return True
-		return False
-
 	def system_package_enabled(self, package):
-		if not hasattr(self, '_system_packages'):
-			cli_command = '/system package print without-paging terse'
-			self._system_packages = self.index_values(self.print_to_values_structured(self.cli_command(cli_command)), 'name')
-		if self._system_packages.get(package)[0].get('flags', '').find('X') == -1:
-			return True
-		return False
+		cli_command = '/system package print without-paging terse'
+		indexed_values = self.index_values(self.print_to_values_structured(self.cli_command(cli_command, use_cache=True)))
+		return indexed_values.get(package, [])[0].get('flags', '').find('X') == -1
 
 	@staticmethod
 	def to_seconds(time_format):
@@ -353,21 +374,21 @@ class ROS_Client(BaseClient):
 
 	def write_file_contents(self, name, contents=''):
 		self.write_file_size_check(contents)
-		cli_output = self.cli_command('/file set {} contents="{}"'.format(name, contents))
+		cli_output = self.cli_command('/file set {} contents="{}"'.format(name, contents), use_cache=False)
 		if cli_output != []:
 			raise GeneralError('Cannot set contents - [{}]'.format(cli_output[0]))
 		return True
 
 	def write_rsc_file(self, name, contents=''):
 		self.write_file_size_check(contents)
-		cli_output = self.cli_command('/system routerboard export file={}'.format(name))
+		cli_output = self.cli_command('/system routerboard export file={}'.format(name), use_cache=False)
 		if cli_output != []:
 			raise GeneralError('Cannot create file - [{}]'.format(cli_output[0]))
 		return self.write_file_contents('{}.rsc'.format(name), contents)
 
 	def write_txt_file(self, name, contents=''):
 		self.write_file_size_check(contents)
-		cli_output = self.cli_command('/file print file={}'.format(name))
+		cli_output = self.cli_command('/file print file={}'.format(name), use_cache=False)
 		if cli_output != []:
 			raise GeneralError('Cannot create file - [{}]'.format(cli_output[0]))
 		return self.write_file_contents('{}.txt'.format(name), contents)
@@ -375,18 +396,18 @@ class ROS_Client(BaseClient):
 
 class SNMP_Client(snmp.SNMP_Client):
 	mtXRouterOs = (1, 3, 6, 1, 4, 1, 14988, 1, 1)
-	mtxrWireless =  mtXRouterOs + (1, )
+	mtxrWireless = mtXRouterOs + (1, )
 	mtxrWlStatTable = mtxrWireless + (1, )
 	mtxrWlStatEntry = mtxrWlStatTable + (1, )
 	mtxrWlRtabTable = mtxrWireless + (2, )
 	mtxrWlRtabEntry = mtxrWlRtabTable + (1, )
 	mtxrWlApTable = mtxrWireless + (3, )
 	mtxrWlApEntry = mtxrWlApTable + (1, )
-	mtxrQueues =  mtXRouterOs + (2, )
+	mtxrQueues = mtXRouterOs + (2, )
 	mtxrQueueSimpleTable = mtxrQueues + (1, )
 	mtxrQueueSimpleEntry = mtxrQueueSimpleTable + (1, )
-	mtxrHealth =  mtXRouterOs + (3, )
-	mtxrLicense =  mtXRouterOs + (4, )
+	mtxrHealth = mtXRouterOs + (3, )
+	mtxrLicense = mtXRouterOs + (4, )
 	mtrxLicVersion = mtxrLicense + (4, 0)
 	mtxrSystem = mtXRouterOs + (7, )
 	mtxrFirmwareVersion = mtxrSystem + (4, 0)
