@@ -63,7 +63,8 @@ class SSH_Client(object):
 
 	def disconnect(self):
 		if hasattr(self, 'paramiko_transport'):
-			self.paramiko_transport.close()
+			if self.is_active():
+				self.paramiko_transport.close()
 			del self.paramiko_transport
 
 	def exec_command(self, command, *args):
@@ -72,6 +73,11 @@ class SSH_Client(object):
 		chan.exec_command(command)
 		output = chan.makefile('rb')
 		return [s.rstrip('\r\n') for s in output.readlines()]
+
+	def is_active(self):
+		if hasattr(self, 'paramiko_transport'):
+			return self.paramiko_transport.is_active()
+		return False
 
 	def on_connect(self, paramiko):
 		pass
@@ -140,7 +146,7 @@ class Shell(object):
 		return output
 
 	def exit(self, exit_command='exit'):
-		if hasattr(self, 'channel'):
+		if hasattr(self, 'channel') and self.ssh_client.is_active():
 			self.channel.send(exit_command)
 			self.channel.close()
 			del self.channel
