@@ -65,7 +65,7 @@ class CL_Client(BaseClient):
 		if self.can_ssh():
 			cli_output = self.ssh_command('lsb_release -r')
 			if cli_output != []:
-				return cli_output[0][8:].lstrip().rstrip()
+				return cli_output[0][8:].strip()
 		return ''
 
 	def ssh_command(self, *args, **kwargs):

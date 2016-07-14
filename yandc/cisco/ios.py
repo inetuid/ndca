@@ -1,13 +1,12 @@
-"""Cisco IOS/IOS-XR
-"""
+"""Cisco IOS"""
 
-__all__ = ['IOS_Client', 'XR_Client']
+__all__ = ['IOS_Client']
 __author__ = 'Matt Ryan'
 
 import re
 #
-from .vendor_base import BaseClient
-from . import snmp, ssh
+from ..vendor_base import BaseClient
+from .. import snmp, ssh
 
 def ios_version(s):
 	re_match = re.match(r'Cisco IOS Software, .+, Version ([^\,]+),', s)
@@ -62,11 +61,9 @@ class IOS_Client(BaseClient):
 					raise ValueError(cli_output[0])
 
 				for config_line in new_config:
-					stripped_line = config_line.lstrip().rstrip()
-
+					stripped_line = config_line.strip()
 					if stripped_line in ['end', 'exit']:
 						continue
-
 					cli_output = self.ssh_command(stripped_line)
 					if cli_output != []:
 						raise ValueError(cli_output[0])

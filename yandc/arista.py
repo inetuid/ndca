@@ -100,7 +100,7 @@ class EOS_Client(BaseClient):
 					raise ValueError(cli_output[0])
 
 				for config_line in new_config:
-					stripped_line = config_line.lstrip().rstrip()
+					stripped_line = config_line.strip()
 					if stripped_line in ['end', 'exit']:
 						warnings.warn('Skipping ' + config_line)
 						continue
@@ -176,8 +176,8 @@ class EOS_Client(BaseClient):
 		return self._in_configure_mode
 
 	def persist_configuration(self):
-		if self.in_configure_mode:
-			pass
+#		if self.in_configure_mode:
+#			pass
 
 		cli_output = self.cli_command('copy running-config startup-config')
 		if cli_output[0] != 'Copy completed successfully.':
