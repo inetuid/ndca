@@ -1,10 +1,3 @@
-"""Base Class
-"""
-
-__all__ = ['BaseClient']
-__author__ = 'Matt Ryan'
-
-
 class BaseClient(object):
 	def __del__(self):
 		self.disconnect()
@@ -47,14 +40,14 @@ class BaseClient(object):
 			for group in groups:
 				group_length = len(group)
 				if key.startswith(group):
-					if not group in grouped_kwargs:
+					if group not in grouped_kwargs:
 						grouped_kwargs[group] = {}
 					grouped_kwargs[group][key[group_length:]] = value
 		return grouped_kwargs
 
 	def snmp_get(self, oid):
 		if not self.can_snmp():
-			raise yandc.Client_Exception('No SNMP client')
+			raise Client_Exception('No SNMP client')
 		return self.snmp_client.get_oid(self.snmp_client.format_oid(oid))
 
 	def snmp_walk(self, oid):

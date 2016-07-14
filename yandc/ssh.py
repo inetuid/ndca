@@ -1,9 +1,3 @@
-"""SSH Helper
-"""
-
-__all__ = ['SSH_Client', 'Shell', 'ShellPrompt', 'SSH_Exception', 'AuthenticationError', 'ConnectError']
-__author__ = 'Matt Ryan'
-
 import re
 import socket
 #
@@ -11,6 +5,7 @@ import paramiko
 
 
 class SSH_Client(object):
+	"""Simple SSH client class"""
 	def __del__(self):
 		self.disconnect()
 
@@ -32,13 +27,15 @@ class SSH_Client(object):
 			paramiko_transport = paramiko.Transport(sock)
 			paramiko_transport.connect()
 		except socket.error as error:
-			raise ConnectError('Could not connect to {}:{} - [{}]'.format(host, tcp_port, error.message))
+			raise ConnectError(
+				'Could not connect to {}:{} - [{}]'.format(host, tcp_port, error.message)
+			)
 		else:
 			self.on_connect(paramiko_transport)
 
 		paramiko_transport.set_keepalive(1)
 
-		auth_types = []
+#		auth_types = []
 
 #		try:
 #			auth_types = paramiko_transport.auth_none(kwargs['username'])
@@ -52,7 +49,9 @@ class SSH_Client(object):
 		except paramiko.AuthenticationException as auth_error:
 			raise AuthenticationError(auth_error.message)
 		except paramiko.BadAuthenticationType as bad_auth_type:
-			raise AuthenticationError('Auth method not supported - [{}]'.format(bad_auth_type.allowed_types))
+			raise AuthenticationError(
+				'Auth method not supported - [{}]'.format(bad_auth_type.allowed_types)
+			)
 		else:
 			self.paramiko_transport = paramiko_transport
 
@@ -70,16 +69,16 @@ class SSH_Client(object):
 	def exec_command(self, command, *args):
 		chan = self.channel()
 		chan.set_combine_stderr(True)
-		chan.exec_command(command)
+		chan.exec_command(command, *args)
 		output = chan.makefile('rb')
-		return [s.rstrip('\r\n') for s in output.readlines()]
+		return [Shell.on_output_line(output_line) for output_line in output.readlines()]
 
 	def is_active(self):
 		if hasattr(self, 'paramiko_transport'):
 			return self.paramiko_transport.is_active()
 		return False
 
-	def on_connect(self, paramiko):
+	def on_connect(self, paramiko_transport):
 		pass
 
 	def sftp_client(self):
@@ -87,6 +86,7 @@ class SSH_Client(object):
 
 
 class Shell(object):
+	"""SSH shell class"""
 	def __del__(self):
 		self.exit()
 
@@ -147,7 +147,8 @@ class Shell(object):
 	def on_banner(self, banner):
 		pass
 
-	def on_output_line(self, output_line):
+	@staticmethod
+	def on_output_line(output_line):
 		return output_line.rstrip('\r\n')
 
 	def on_prompt(self, prompt):
@@ -159,7 +160,7 @@ class Shell(object):
 			raw_output = self._gets()
 			if raw_output == '':
 				prompt_retries -= 1
-			else :
+			else:
 				output_line = self.on_output_line(raw_output)
 				if self.shell_prompt.is_prompt(output_line):
 					self.last_prompt = output_line
@@ -198,6 +199,7 @@ class Shell(object):
 
 
 class ShellPrompt(object):
+	"""Prompt handling class for Shell"""
 	def __init__(self, prompt=None):
 		self.prompts = {}
 		if prompt is not None:
@@ -209,7 +211,10 @@ class ShellPrompt(object):
 	def add_prompt(self, prompt):
 		if isinstance(prompt, basestring):
 			if prompt not in self.prompts:
-				self.prompts[prompt] = dict(prompt_type=basestring, prompt_value=prompt)
+				self.prompts[prompt] = {
+					'prompt_type': basestring,
+					'prompt_value': prompt
+				}
 		elif isinstance(prompt, dict):
 			if 'prompt_type' in prompt and 'prompt_value' in prompt:
 				if prompt['prompt_value'] not in self.prompts:
@@ -220,30 +225,40 @@ class ShellPrompt(object):
 			raise TypeError('Unsupported prompt type - [{}]'.format(type(prompt)))
 
 	def is_prompt(self, candidate_prompt):
-		if candidate_prompt in self.prompts and self.prompts[candidate_prompt]['prompt_type'] is basestring:
+		if candidate_prompt in self.prompts and \
+				self.prompts[candidate_prompt]['prompt_type'] is basestring:
 			return True
-		for key, value in self.prompts.iteritems():
-			if value['prompt_type'] is basestring:
+		for prompt in self.prompts.values():
+			if prompt['prompt_type'] is basestring:
 				continue
-			elif value['prompt_type'] == 'regexp':
-				if re.match(value['prompt_regexp'], candidate_prompt):
+			elif prompt['prompt_type'] == 'regexp':
+				if re.match(prompt['prompt_regexp'], candidate_prompt):
 					return True
 			else:
-				raise TypeError('Unsupported prompt type - [{}]'.format(value['prompt_type']))
+				raise TypeError(
+					'Unsupported prompt type - [{}]'.format(prompt['prompt_type'])
+				)
 		return False
 
 	@staticmethod
 	def regexp_prompt(re_prompt):
-		return dict(prompt_type='regexp', prompt_value=re_prompt, prompt_regexp=re.compile(re_prompt))
+		return {
+			'prompt_type': 'regexp',
+			'prompt_value': re_prompt,
+			'prompt_regexp': re.compile(re_prompt)
+		}
 
 
 class SSH_Exception(Exception):
+	"""Base exception class"""
 	pass
 
 
 class AuthenticationError(SSH_Exception):
+	"""Class for authentication errors"""
 	pass
 
 
 class ConnectError(SSH_Exception):
+	"""Class for connect errors"""
 	pass

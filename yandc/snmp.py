@@ -1,10 +1,3 @@
-"""SNMP Helper
-"""
-
-__all__ = ['SNMP_Client', 'SNMP_Exception']
-
-import re
-#
 from pysnmp.entity.rfc3413.oneliner import cmdgen
 from pyasn1.type import univ
 
@@ -81,12 +74,15 @@ class SNMP_Client(object):
 			},
 			column_names
 		)
-
-		for key, value in bgp_peer_table.iteritems():
-			if 'bgpPeerState' in value:
-				value['bgpPeerState'] = self.decode_bgpPeerState(value.get('bgpPeerState'))
-			if 'bgpPeerAdminStatus' in value:
-				value['bgpPeerAdminStatus'] = self.decode_bgpPeerAdminStatus(value.get('bgpPeerAdminStatus'))
+		for bgp_peer, bgp_peer_entry in bgp_peer_table.iteritems():
+			if 'bgpPeerState' in bgp_peer_entry:
+				bgp_peer_entry['bgpPeerState'] = self.decode_bgpPeerState(
+					bgp_peer_entry['bgpPeerState']
+				)
+			if 'bgpPeerAdminStatus' in bgp_peer_entry:
+				bgp_peer_entry['bgpPeerAdminStatus'] = self.decode_bgpPeerAdminStatus(
+					bgp_peer_entry['bgpPeerAdminStatus']
+				)
 		return bgp_peer_table
 
 	def bgp4PathAttrTable(self, column_names):
@@ -207,18 +203,21 @@ class SNMP_Client(object):
 		)
 
 	def dot1qTpFdbTable(self, column_names):
-		table_columns = {
-			'dot1qTpFdbAddress': 1,
-			'dot1qTpFdbPort': 2,
-			'dot1qTpFdbStatus': 3,
-		}
-
-		ret_ = {}
-		for key, value in self._table_entries(SNMP_Client.oid_lookup['dot1qTpFdbEntry'], table_columns, column_names).iteritems():
-			if 'dot1qTpFdbStatus' in value:
-				value['dot1qTpFdbStatus'] = self.decode_dot1qTpFdbStatus(value.get('dot1qTpFdbStatus'))
-			ret_[key] = value
-		return ret_
+		dot1q_tp_fdb_table = self._table_entries(
+			SNMP_Client.oid_lookup['dot1qTpFdbEntry'],
+			{
+				'dot1qTpFdbAddress': 1,
+				'dot1qTpFdbPort': 2,
+				'dot1qTpFdbStatus': 3,
+			},
+			column_names
+		)
+		for _, dot1q_tp_fdb_entry in dot1q_tp_fdb_table.iteritems():
+			if 'dot1qTpFdbStatus' in dot1q_tp_fdb_entry:
+				dot1q_tp_fdb_entry['dot1qTpFdbStatus'] = self.decode_dot1qTpFdbStatus(
+					dot1q_tp_fdb_entry.get('dot1qTpFdbStatus')
+				)
+		return dot1q_tp_fdb_table
 
 	def dot1qVlanCurrentTable(self, column_names):
 		return self._table_entries(
@@ -291,7 +290,9 @@ class SNMP_Client(object):
 			},
 			column_names
 		)
-	def format_oid(self, oid):
+
+	@staticmethod
+	def format_oid(oid):
 		if isinstance(oid, str):
 			return tuple(map(int, oid.lstrip('.').split('.')))
 		elif isinstance(oid, tuple):
@@ -301,10 +302,10 @@ class SNMP_Client(object):
 		else:
 			try:
 				return tuple(oid)
-			except TypeError as e:
+			except TypeError:
 				return (int(oid), )
 			raise ValueError('Cannot format OID - [{}]'.format(oid))
-		
+
 	def get_oid(self, base_oid, oid_index=None):
 		snmp_oid = base_oid
 		if oid_index is not None:
@@ -317,8 +318,8 @@ class SNMP_Client(object):
 
 		cmdGen = cmdgen.CommandGenerator()
 		cmdGen.lexicographicMode = False
-		cmdGen.lookupNames = False;
-		cmdGen.lookupValues = False;
+		cmdGen.lookupNames = False
+		cmdGen.lookupValues = False
 
 		errorIndication, errorStatus, errorIndex, varBinds = cmdGen.getCmd(
 			self._authdata,
@@ -331,7 +332,7 @@ class SNMP_Client(object):
 		else:
 			if errorStatus:
 				raise SNMP_Exception(snmp_oid)
-			else :
+			else:
 				oid, value = varBinds[0]
 				if oid != snmp_oid:
 					raise SNMP_Exception('Mismatched SNMP OID - [{}]'.format(oid))
@@ -352,71 +353,73 @@ class SNMP_Client(object):
 		return if_name
 
 	def ifTable(self, column_names):
-		table_columns = {
-			'ifIndex': 1,
-			'ifDescr': 2,
-			'ifType': 3,
-			'ifMtu': 4,
-			'ifSpeed': 5,
-			'ifPhysAddress': 6,
-			'ifAdminStatus': 7,
-			'ifOperStatus': 8,
-			'ifLastChange': 9,
-			'ifInOctets': 10,
-			'ifInUcastPkts': 11,
-			'ifInNUcastPkts': 12,
-			'ifInDiscards': 13,
-			'ifInErrors': 14,
-			'ifInUnknownProtos': 15,
-			'ifOutOctets': 16,
-			'ifOutUcastPkts': 17,
-			'ifOutNUcastPkts': 18,
-			'ifOutDiscards': 19,
-			'ifOutErrors': 20,
-			'ifOutQLen': 21,
-			'ifSpecific': 22,
-		}
-
-		ret_ = {}
-		for key, value in self._table_entries(SNMP_Client.oid_lookup['ifEntry'], table_columns, column_names).iteritems():
-			if 'ifAdminStatus' in value:
-				value['ifAdminStatus'] = self.decode_ifAdminStatus(value.get('ifAdminStatus'))
-			if 'ifOperStatus' in value:
-				value['ifOperStatus'] = self.decode_ifOperStatus(value.get('ifOperStatus'))
-			ret_[key] = value
-		return ret_
+		if_table = self._table_entries(
+			SNMP_Client.oid_lookup['ifEntry'],
+			{
+				'ifIndex': 1,
+				'ifDescr': 2,
+				'ifType': 3,
+				'ifMtu': 4,
+				'ifSpeed': 5,
+				'ifPhysAddress': 6,
+				'ifAdminStatus': 7,
+				'ifOperStatus': 8,
+				'ifLastChange': 9,
+				'ifInOctets': 10,
+				'ifInUcastPkts': 11,
+				'ifInNUcastPkts': 12,
+				'ifInDiscards': 13,
+				'ifInErrors': 14,
+				'ifInUnknownProtos': 15,
+				'ifOutOctets': 16,
+				'ifOutUcastPkts': 17,
+				'ifOutNUcastPkts': 18,
+				'ifOutDiscards': 19,
+				'ifOutErrors': 20,
+				'ifOutQLen': 21,
+				'ifSpecific': 22,
+			},
+			column_names
+		)
+		for if_name, if_entry in if_table.iteritems():
+			if 'ifAdminStatus' in if_entry:
+				if_entry['ifAdminStatus'] = self.decode_ifAdminStatus(if_entry.get('ifAdminStatus'))
+			if 'ifOperStatus' in if_entry:
+				if_entry['ifOperStatus'] = self.decode_ifOperStatus(if_entry.get('ifOperStatus'))
+		return if_table
 
 	def ifXTable(self, column_names):
-		table_columns = {
-			'ifName': 1,
-			'ifInMulticastPkts': 2,
-			'ifInBroadcastPkts': 3,
-			'ifOutMulticastPkts': 4,
-			'ifOutBroadcastPkts': 5,
-			'ifHCInOctets': 6,
-			'ifHCInUcastPkts': 7,
-			'ifHCInMulticastPkts': 8,
-			'ifHCInBroadcastPkts': 9,
-			'ifHCOutOctets': 10,
-			'ifHCOutUcastPkts': 11,
-			'ifHCOutMulticastPkts': 12,
-			'ifHCOutBroadcastPkts': 13,
-			'ifLinkUpDownTrapEnable': 14,
-			'ifHighSpeed': 15,
-			'ifPromiscuousMode': 16,
-			'ifConnectorPresent': 17,
-			'ifAlias': 18,
-			'ifCounterDiscontinuityTime': 19,
-		}
-
-		ret_ = {}
-		for key, value in self._table_entries(SNMP_Client.oid_lookup['ifXEntry'], table_columns, column_names).iteritems():
-			if 'ifLinkUpDownTrapEnable' in value:
-				value['ifLinkUpDownTrapEnable'] = value.get('ifLinkUpDownTrapEnable')
-			if 'ifConnectorPresent' in value:
-				value['ifConnectorPresent'] = value.get('ifConnectorPresent')
-			ret_[key] = value
-		return ret_
+		if_table = self._table_entries(
+			SNMP_Client.oid_lookup['ifXEntry'],
+			{
+				'ifName': 1,
+				'ifInMulticastPkts': 2,
+				'ifInBroadcastPkts': 3,
+				'ifOutMulticastPkts': 4,
+				'ifOutBroadcastPkts': 5,
+				'ifHCInOctets': 6,
+				'ifHCInUcastPkts': 7,
+				'ifHCInMulticastPkts': 8,
+				'ifHCInBroadcastPkts': 9,
+				'ifHCOutOctets': 10,
+				'ifHCOutUcastPkts': 11,
+				'ifHCOutMulticastPkts': 12,
+				'ifHCOutBroadcastPkts': 13,
+				'ifLinkUpDownTrapEnable': 14,
+				'ifHighSpeed': 15,
+				'ifPromiscuousMode': 16,
+				'ifConnectorPresent': 17,
+				'ifAlias': 18,
+				'ifCounterDiscontinuityTime': 19,
+			},
+			column_names
+		)
+		for if_index, if_entry in if_table.iteritems():
+			if 'ifLinkUpDownTrapEnable' in if_entry:
+				if_entry['ifLinkUpDownTrapEnable'] = if_entry.get('ifLinkUpDownTrapEnable')
+			if 'ifConnectorPresent' in if_entry:
+				if_entry['ifConnectorPresent'] = if_entry.get('ifConnectorPresent')
+		return if_table
 
 	def inetCidrRouteTable(self, column_names):
 		return self._table_entries(
@@ -472,10 +475,6 @@ class SNMP_Client(object):
 				'ipAddressAddr': 2,
 				'ipAddressIfIndex': 3,
 				'ipAddressType': 4,
-#Value   Label/Meaning
-#1       unicast
-#2       anycast
-#3       broadcast
 				'ipAddressPrefix': 5,
 				'ipAddressOrigin': 6,
 				'ipAddressStatus': 7,
@@ -599,8 +598,8 @@ class SNMP_Client(object):
 
 		cmdGen = cmdgen.CommandGenerator()
 		cmdGen.lexicographicMode = False
-		cmdGen.lookupNames = False;
-		cmdGen.lookupValues = False;
+		cmdGen.lookupNames = False
+		cmdGen.lookupValues = False
 
 		errorIndication, errorStatus, errorIndex, varBindTable = cmdGen.nextCmd(
 			self._authdata,
@@ -613,7 +612,7 @@ class SNMP_Client(object):
 		else:
 			if errorStatus:
 				raise SNMP_Exception(errorStatus)
-			else :
+			else:
 				ret_ = {}
 				for varBindTableRow in varBindTable:
 					for oid, value in varBindTableRow:
@@ -630,7 +629,7 @@ class SNMP_Client(object):
 		assert isinstance(column_names, list)
 
 		if column_names[0] == '*':
-			column_names = [k for k, v in table_columns.iteritems()]
+			column_names = table_columns.keys()
 
 		oid_list = []
 		for column_name in column_names:
@@ -648,7 +647,7 @@ class SNMP_Client(object):
 		entry_oid_length = len(entry_oid)
 		table_columns_reversed = dict((v, k) for k, v in table_columns.iteritems())
 
-		ret_ = {}
+		table_entries = {}
 		for oid, value in self.walk_oids(oid_list).iteritems():
 			if oid[:entry_oid_length] != entry_oid:
 				raise ValueError('OID out of range - [{}]'.format(oid))
@@ -658,17 +657,18 @@ class SNMP_Client(object):
 				raise ValueError('Cannot get index')
 
 			table_entry = oid_parts[0]
-			if not table_entry in table_columns_reversed:
+			if table_entry not in table_columns_reversed:
 				raise SNMP_Exception('No column name for {}'.format(table_entry))
 			table_entry = table_columns_reversed[table_entry]
 
 			table_index = tuple(oid_parts[1:])
-			if not table_index in ret_:
-				ret_[table_index] = {}
+			if table_index not in table_entries:
+				table_entries[table_index] = {}
 
-			ret_[table_index][table_entry] = value
-		return ret_
+			table_entries[table_index][table_entry] = value
+		return table_entries
 
 
 class SNMP_Exception(Exception):
+	"""Base SNMP error class"""
 	pass
