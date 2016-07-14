@@ -82,15 +82,8 @@ class SSH_Client(object):
 	def on_connect(self, paramiko):
 		pass
 
-	def sftp_get(self, remote_path, local_path):
-		sftp = paramiko.SFTPClient.from_transport(self.paramiko_transport)
-		sftp.get(remote_path, local_path)
-		sftp.close()
-
-	def sftp_put(self, local_path, remote_path):
-		sftp = paramiko.SFTPClient.from_transport(self.paramiko_transport)
-		sftp.put(local_path, remote_path)
-		sftp.close()
+	def sftp_client(self):
+		return paramiko.SFTPClient.from_transport(self.paramiko_transport)
 
 
 class Shell(object):
@@ -210,13 +203,16 @@ class ShellPrompt(object):
 		if prompt is not None:
 			self.add_prompt(prompt)
 
+	def __repr__(self):
+		return '{}.prompts={}'.format(type(self).__name__, repr(self.prompts))
+
 	def add_prompt(self, prompt):
 		if isinstance(prompt, basestring):
-			if not prompt in self.prompts:
+			if prompt not in self.prompts:
 				self.prompts[prompt] = dict(prompt_type=basestring, prompt_value=prompt)
 		elif isinstance(prompt, dict):
 			if 'prompt_type' in prompt and 'prompt_value' in prompt:
-				if not prompt['prompt_value'] in self.prompts:
+				if prompt['prompt_value'] not in self.prompts:
 					self.prompts[prompt['prompt_value']] = prompt
 			else:
 				raise ValueError('Invalid prompt specified')
@@ -229,8 +225,6 @@ class ShellPrompt(object):
 		for key, value in self.prompts.iteritems():
 			if value['prompt_type'] is basestring:
 				continue
-#				if candidate_prompt == value['prompt_value']:
-#					return True
 			elif value['prompt_type'] == 'regexp':
 				if re.match(value['prompt_regexp'], candidate_prompt):
 					return True
