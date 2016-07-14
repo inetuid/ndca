@@ -6,6 +6,7 @@ __author__ = 'Matt Ryan'
 import datetime
 import re
 import time
+import StringIO
 #
 from .vendor_base import BaseClient
 from . import snmp, ssh
@@ -121,7 +122,7 @@ class ROS_Client(BaseClient):
 			elif line[0] == '#':
 				continue
 			elif line[-1:] == '\\':
-				concat_line.append(line[:-1].lstrip().rstrip())
+				concat_line.append(line[:-1].strip())
 			else:
 				concat_line.append(line.lstrip())
 				concat_output.append('{} {}'.format(export_section, ' '.join(concat_line)))
@@ -185,6 +186,13 @@ class ROS_Client(BaseClient):
 			return True
 		return False
 
+	@staticmethod
+	def is_cli_warning(output_line):
+		re_match = re.match(r'\[([^\]]+)\]$', output_line)
+		if re_match is not None:
+			return True
+		return False
+
 	def is_mikrotik(self, sys_object_id):
 		if sys_object_id.startswith('1.3.6.1.4.1.14988.1'):
 			return True
@@ -238,11 +246,11 @@ class ROS_Client(BaseClient):
 			if len(line) == 0:
 				continue
 			if line.startswith('   '):
-				concat_output[-1] = ' '.join([concat_output[-1], line.lstrip().rstrip()])
+				concat_output[-1] = ' '.join([concat_output[-1], line.strip()])
 			else:
 				if line.find(';;; ') != -1:
 					line = line.replace(';;; ', 'comment=')
-				concat_output.append(line.lstrip().rstrip())
+				concat_output.append(line.strip())
 		return concat_output
 
 	@staticmethod
@@ -254,13 +262,13 @@ class ROS_Client(BaseClient):
 			key, value = line.split(':', 1)
 			if key in to_values:
 				raise GeneralError('Key already seen - [{}]'.format(key))
-			to_values[key.lstrip().rstrip()] = value.lstrip().rstrip()
+			to_values[key.strip()] = value.strip()
 		return to_values
 
 	def print_to_values_structured(self, print_output):
 		to_values_structured = []
 		for line in print_output:
-			line_parts = line.lstrip().rstrip().split()
+			line_parts = line.strip().split()
 			if len(line_parts) == 0:
 				continue
 			if line_parts[0].isdigit():
@@ -269,6 +277,8 @@ class ROS_Client(BaseClient):
 				index_seen = -1
 			flags_seen = ''
 			while True:
+				if not len(line_parts):
+					raise ValueError('No parts available')
 				part = line_parts.pop(0)
 				if part.find('=') == -1:
 					flags_seen += part
@@ -288,7 +298,18 @@ class ROS_Client(BaseClient):
 	def safe_mode_toggle(self):
 		if self.shell.channel.send(chr(0x18)) != 1:
 			raise GeneralError('send()')
+		hijack_safe_mode = "Hijacking Safe Mode from someone - unroll/release/don't take it [u/r/d]: "
+		self.shell.shell_prompt.add_prompt(hijack_safe_mode)
 		shell_output, retries_left = self.shell.read_until_prompt(10)
+		if self.shell.last_prompt == hijack_safe_mode:
+			self.shell.channel.send('r')
+			shell_output, retries_left = self.shell.read_until_prompt(10)
+			first_line = shell_output.pop(0)
+			if first_line == '114':
+				pass
+#				first_line = shell_output.pop(0)
+#			if first_line != "Released someone's Safe Mode":
+#				print first_line
 		if len(shell_output) < 2:
 			raise Exception(shell_output[0])
 		if shell_output[1] == '[Safe Mode taken]':
@@ -358,10 +379,16 @@ class ROS_Client(BaseClient):
 	def to_seconds_date_time(self, date_time):
 		try:
 			time_then = datetime.datetime.strptime(date_time, '%b/%d/%Y %H:%M:%S')
-		except ValueError as e:
+		except ValueError:
 			return -1
 		time_diff = datetime.datetime.now() + self._datetime_offset - time_then
 		return int(time_diff.total_seconds())
+
+	def upload_config(self, config, config_name):
+		sftp_client = self.ssh_client.sftp_client()
+		config_file = StringIO.StringIO('\r\n'.join(config))
+		sftp_client.putfo(config_file, '{}.rsc'.format(config_name))
+		sftp_client.close()
 
 	@staticmethod
 	def vendor():
