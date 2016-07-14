@@ -1,5 +1,3 @@
-__all__ = ['EOS_Client', 'IOS_Client', 'XR_Client', 'CL_Client', 'ROS_Client']
-
 import sys
 #
 from .arista import EOS_Client

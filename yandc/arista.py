@@ -1,7 +1,3 @@
-"""Arista EOS"""
-
-__all__ = ['EOS_Client']
-
 import json
 import re
 #
@@ -33,32 +29,32 @@ class EOS_Client(BaseClient):
 				self.snmp_client = snmp_client
 
 		if have_pyeapi:
-			if not 'eapi_' in grouped_kwargs:
+			if 'eapi_' not in grouped_kwargs:
 				grouped_kwargs['eapi_'] = {}
-			if not 'host' in grouped_kwargs['eapi_']:
+			if 'host' not in grouped_kwargs['eapi_']:
 				grouped_kwargs['eapi_']['host'] = kwargs['host']
-			if not 'username' in grouped_kwargs['eapi_'] and 'username' in kwargs:
+			if 'username' not in grouped_kwargs['eapi_'] and 'username' in kwargs:
 				grouped_kwargs['eapi_']['username'] = kwargs['username']
-			if not 'password' in grouped_kwargs['eapi_'] and 'password' in kwargs:
+			if 'password' not in grouped_kwargs['eapi_'] and 'password' in kwargs:
 				grouped_kwargs['eapi_']['password'] = kwargs['password']
 			grouped_kwargs['eapi_']['return_node'] = True
 
 			self._pyeapi_node = pyeapi.connect(**grouped_kwargs['eapi_'])
 
 		if not self.can_eapi():
-			if not 'ssh_' in grouped_kwargs:
+			if 'ssh_' not in grouped_kwargs:
 				grouped_kwargs['ssh_'] = {}
-			if not 'username' in grouped_kwargs['ssh_'] and 'username' in kwargs:
+			if 'username' not in grouped_kwargs['ssh_'] and 'username' in kwargs:
 				grouped_kwargs['ssh_']['username'] = kwargs['username']
-			if not 'password' in grouped_kwargs['ssh_'] and 'password' in kwargs:
+			if 'password' not in grouped_kwargs['ssh_'] and 'password' in kwargs:
 				grouped_kwargs['ssh_']['password'] = kwargs['password']
 
-			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
+			self.ssh_client = ssh.SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
 
 			shell_prompt = ssh.ShellPrompt(ssh.ShellPrompt.regexp_prompt(r'.+[#>]$'))
 			shell_prompt.add_prompt(ssh.ShellPrompt.regexp_prompt(r'.+\(config[^\)]*\)#$'))
 
-			self.shell = Shell(self.ssh_client, shell_prompt)
+			self.shell = ssh.Shell(self.ssh_client, shell_prompt)
 			self.shell.channel.set_combine_stderr(True)
 			self.shell.command('terminal dont-ask')
 			self.shell.command('terminal length 0')
@@ -79,7 +75,7 @@ class EOS_Client(BaseClient):
 			return self.ssh_command(*args, **kwargs)
 		raise Exception('No valid CLI handlers')
 
-	def configure_via_cli(self, new_config=[]):
+	def configure_via_cli(self, new_config):
 		if self.can_eapi():
 			try:
 				config_output = self._pyeapi_node.config(new_config)
@@ -87,8 +83,8 @@ class EOS_Client(BaseClient):
 				print error
 				return False
 			else:
-				for foo in config_output:
-					if foo != {}:
+				for output_line in config_output:
+					if output_line != {}:
 						return False
 			return True
 		elif self.can_ssh():
@@ -121,7 +117,7 @@ class EOS_Client(BaseClient):
 		if self.can_eapi():
 			del self._pyeapi_node
 		if self.can_ssh() and hasattr(self, 'shell'):
-			self.shell.exit()
+			self.shell.exit('logout')
 			del self.shell
 		super(EOS_Client, self).disconnect()
 
@@ -131,14 +127,14 @@ class EOS_Client(BaseClient):
 				kwargs['strict'] = True
 				eapi_output = self._pyeapi_node.enable(*args, **kwargs)[0]
 
-				if not eapi_output['encoding'] == 'json':
+				if eapi_output['encoding'] != 'json':
 					raise TypeError('Enconding is not json')
-				return eapi_output.get('result', None)
+				return eapi_output.get('result', [])
 			else:
 				kwargs['encoding'] = 'text'
 				eapi_output = self._pyeapi_node.enable(*args, **kwargs)[0]
 
-				if not eapi_output['encoding'] == 'text':
+				if eapi_output['encoding'] != 'text':
 					raise TypeError('Enconding is not text')
 				return eapi_output.get('result', {}).get('output', '').splitlines()
 		return []
@@ -146,7 +142,10 @@ class EOS_Client(BaseClient):
 	def get_config(self, source='running', section=None):
 		if self.can_eapi():
 			if section is not None:
-				return self._pyeapi_node.get_config(config='{}-config'.format(source), params='section {}'.format(section))
+				return self._pyeapi_node.get_config(
+					config='{}-config'.format(source),
+					params='section {}'.format(section)
+				)
 			return self._pyeapi_node.get_config(config='{}-config'.format(source))
 		elif self.can_ssh():
 			config_command = 'show {}-config'.format(source)
@@ -172,7 +171,12 @@ class EOS_Client(BaseClient):
 			if config_prompt:
 				mode_mismatch = True
 		if mode_mismatch:
-			raise ValueError('Mistmatch between in_configure_mode [{}] and prompt [{}]'.format(self._in_configure_mode, self.shell.last_prompt))
+			raise ValueError(
+				'Mistmatch between in_configure_mode [{}] and prompt [{}]'.format(
+					self._in_configure_mode,
+					self.shell.last_prompt
+				)
+			)
 		return self._in_configure_mode
 
 	def persist_configuration(self):
@@ -196,7 +200,9 @@ class EOS_Client(BaseClient):
 		elif self.can_eapi():
 			return self.eapi_command('show version', encoding='json').get('version', None)
 		elif self.can_ssh():
-			return json.loads(''.join(self.ssh_command('show version | json'))).get('version', None)
+			return json.loads(
+				''.join(self.ssh_command('show version | json'))
+			).get('version', None)
 		return ''
 
 	def ssh_command(self, *args, **kwargs):
@@ -213,16 +219,10 @@ class EOS_Client(BaseClient):
 
 class SNMP_Client(snmp.SNMP_Client):
 	def os_version(self):
-		re_match = re.match(r'Arista Networks EOS version (.+) running on an Arista Networks (.+)$', self.sysDescr())
+		re_match = re.match(
+			r'Arista Networks EOS version (.+) running on an Arista Networks (.+)$',
+			self.sysDescr()
+		)
 		if re_match is not None:
 			return re_match.groups()[0]
 		return None
-
-
-class SSH_Client(ssh.SSH_Client):
-	pass
-
-
-class Shell(ssh.Shell):
-	def exit(self):
-		return super(Shell, self).exit('logout')

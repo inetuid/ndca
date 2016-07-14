@@ -1,8 +1,3 @@
-"""Cumulus Linux"""
-
-__all__ = ['CL_Client']
-__author__ = 'Matt Ryan'
-
 import re
 #
 from .vendor_base import BaseClient
@@ -16,7 +11,7 @@ class CL_Client(BaseClient):
 		grouped_kwargs = self.group_kwargs('snmp_', 'ssh_', **kwargs)
 
 		if 'snmp_' in grouped_kwargs:
-			snmp_client = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_'])
+			snmp_client = snmp.SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_'])
 			try:
 				if not snmp_client.sysObjectID().startswith('1.3.6.1.4.1.40310'):
 					raise Exception('Not a Cumulus device')
@@ -32,13 +27,14 @@ class CL_Client(BaseClient):
 			if not 'password' in grouped_kwargs['ssh_'] and 'password' in kwargs:
 				grouped_kwargs['ssh_']['password'] = kwargs['password']
 
-			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
+			self.ssh_client = ssh.SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
 
 			shell_prompt = ssh.ShellPrompt(ssh.ShellPrompt.regexp_prompt(r'[^@]+@[^\$]+\$ '))
 			if self.can_snmp() and 'username' in grouped_kwargs['ssh_']:
-				shell_prompt.add_prompt(grouped_kwargs['ssh_']['username'] + '@' + self.snmp_client.sysName() + '$ ')
-
-			self.shell = Shell(self.ssh_client, shell_prompt)
+				shell_prompt.add_prompt(
+					grouped_kwargs['ssh_']['username'] + '@' + self.snmp_client.sysName() + '$ '
+				)
+			self.shell = ssh.Shell(self.ssh_client, shell_prompt)
 
 	def cli_command(self, *args, **kwargs):
 		return self.ssh_command(*args, **kwargs)
@@ -48,7 +44,7 @@ class CL_Client(BaseClient):
 
 	def disconnect(self):
 		if self.can_ssh() and hasattr(self, 'shell'):
-			self.shell.exit()
+			self.shell.exit('logout')
 			del self.shell
 		super(CL_Client, self).disconnect()
 
@@ -78,16 +74,3 @@ class CL_Client(BaseClient):
 	@staticmethod
 	def vendor():
 		return 'Cumulus'
-
-
-class SNMP_Client(snmp.SNMP_Client):
-	pass
-
-
-class SSH_Client(ssh.SSH_Client):
-	pass
-
-
-class Shell(ssh.Shell):
-	def exit(self):
-		return super(Shell, self).exit('logout')

@@ -9,10 +9,13 @@ class Client(object):
 
 		grouped_kwargs = BaseClient.group_kwargs('snmp_', **kwargs)
 
-		if not 'snmp_' in grouped_kwargs:
+		if 'snmp_' not in grouped_kwargs:
 			raise Exception('No SNMP details specified')
 
-		vendor, sys_object_id = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_']).enterprise()
+		vendor, sys_object_id = SNMP_Client(
+			kwargs['host'],
+			**grouped_kwargs['snmp_']
+		).enterprise()
 
 		if EOS_Client.is_arista(sys_object_id):
 			return EOS_Client(*args, **kwargs)

@@ -1,11 +1,5 @@
-"""Mikrotik ROS"""
-
-__all__ = ['ROS_Client']
-__author__ = 'Matt Ryan'
-
 import datetime
 import re
-import time
 import StringIO
 #
 from .vendor_base import BaseClient
@@ -35,27 +29,38 @@ class ROS_Client(BaseClient):
 			else:
 				self.snmp_client = snmp_client
 
+		self._safe_mode_toggle = False
+		self._cli_output_cache = {}
+
 		if have_rosapi:
 			pass
 
 		if not self.can_rosapi():
-			if not 'ssh_' in grouped_kwargs:
+			if 'ssh_' not in grouped_kwargs:
 				grouped_kwargs['ssh_'] = {}
-			if not 'username' in grouped_kwargs['ssh_'] and 'username' in kwargs:
+			if 'username' not in grouped_kwargs['ssh_'] and 'username' in kwargs:
 				grouped_kwargs['ssh_']['username'] = kwargs['username']
-			if not 'password' in grouped_kwargs['ssh_'] and 'password' in kwargs:
+			if 'password' not in grouped_kwargs['ssh_'] and 'password' in kwargs:
 				grouped_kwargs['ssh_']['password'] = kwargs['password']
 
-			shell_prompt = ssh.ShellPrompt(ssh.ShellPrompt.regexp_prompt(r'\[[^\@]+\@[^\]]+\] > $'))
-			shell_prompt.add_prompt(ssh.ShellPrompt.regexp_prompt(r'\[[^\@]+\@[^\]]+\] <SAFE> $'))
+			shell_prompt = ssh.ShellPrompt(
+				ssh.ShellPrompt.regexp_prompt(r'\[[^\@]+\@[^\]]+\] > $')
+			)
+			shell_prompt.add_prompt(
+				ssh.ShellPrompt.regexp_prompt(r'\[[^\@]+\@[^\]]+\] <SAFE> $')
+			)
 
 			if 'username' in grouped_kwargs['ssh_']:
 				original_username = grouped_kwargs['ssh_']['username']
 				grouped_kwargs['ssh_']['username'] += '+ct0h160w'
 
 				if self.can_snmp():
-					shell_prompt.add_prompt('[' + original_username + '@' + self.snmp_client.sysName() + '] > ')
-					shell_prompt.add_prompt('[' + original_username + '@' + self.snmp_client.sysName() + '] <SAFE> ')
+					shell_prompt.add_prompt(
+						'[' + original_username + '@' + self.snmp_client.sysName() + '] > '
+					)
+					shell_prompt.add_prompt(
+						'[' + original_username + '@' + self.snmp_client.sysName() + '] <SAFE> '
+					)
 
 			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
 			self.shell = Shell(self.ssh_client, shell_prompt)
@@ -64,29 +69,27 @@ class ROS_Client(BaseClient):
 			self._datetime_offset = datetime.datetime.now() - self.ros_datetime()
 
 	def cli_command(self, command, *args, **kwargs):
-		if not hasattr(self, '_cli_output_cache'):
-			self._cli_output_cache = {}
+		"""Run the specified command using the Routerboard CLI"""
 		use_cache = kwargs.pop('use_cache', False)
 		if use_cache:
 			if command in self._cli_output_cache:
-				print 'CACHE - [{}]'.format(command)
 				return self._cli_output_cache[command]
 		else:
 			self._cli_output_cache.pop(command, None)
-			print 'RUN - [{}]'.format(command)
 		ssh_output = self.ssh_command(command, *args, **kwargs)
 		if use_cache:
 			self._cli_output_cache[command] = ssh_output
 		return ssh_output
-		raise GeneralError('No CLI handler')
+#		raise GeneralError('No CLI handler')
 
 	def can_rosapi(self):
+		"""Can make use of the ROSAPI package"""
 		if hasattr(self, '_rosapi'):
 			return True
 		return False
 
-	def configure_via_cli(self, config_commands=[]):
-		if not getattr(self, '_safe_mode_toggle', False):
+	def configure_via_cli(self, config_commands):
+		if not self._safe_mode_toggle:
 			if not self.safe_mode_toggle():
 				self.safe_mode_toggle()
 
@@ -102,14 +105,15 @@ class ROS_Client(BaseClient):
 		if self.can_rosapi():
 			pass
 		if self.can_ssh() and hasattr(self, 'shell'):
-			if getattr(self, '_safe_mode_toggle', False):
+			if self._safe_mode_toggle:
 				if self.safe_mode_toggle():
 					self.safe_mode_toggle()
-			self.shell.exit()
+			self.shell.exit('/quit')
 			del self.shell
 		super(ROS_Client, self).disconnect()
 
-	def export_concat(self, export_config):
+	@staticmethod
+	def export_concat(export_config):
 		concat_output = []
 
 		export_section = None
@@ -131,8 +135,11 @@ class ROS_Client(BaseClient):
 		return concat_output
 
 	def file_exists(self, filename):
-		cli_output = self.cli_command('/file print without-paging terse')
-		indexed_values = self.index_values(self.print_to_values_structured(cli_output))
+		indexed_values = self.index_values(
+			self.print_to_values_structured(
+				self.cli_command('/file print without-paging terse')
+			)
+		)
 		if filename in indexed_values:
 			return True
 		return False
@@ -148,9 +155,11 @@ class ROS_Client(BaseClient):
 			if_type = 'ethernet'
 		elif if_type == 'pppoe-out':
 			if_type = 'pppoe-client'
-		cli_output = self.cli_command('/interface {} print without-paging terse'.format(if_type))
-		indexed_values = self.index_values(self.print_to_values_structured(cli_output))
-		return indexed_values.get(if_name)
+		return self.index_values(
+			self.print_to_values_structured(
+				self.cli_command('/interface {} print without-paging terse'.format(if_type))
+			)
+		).get(if_name)
 
 	def in_configure_mode(self, *args, **kwargs):
 		return False
@@ -158,26 +167,30 @@ class ROS_Client(BaseClient):
 	@staticmethod
 	def index_values(values, key='name'):
 		values_indexed = {}
-		for v in values:
-			if key in v:
-				if not v[key] in values_indexed:
-					values_indexed[v[key]] = []
-				values_indexed[v[key]].append(v)
+		for value in values:
+			if key in value:
+				if value[key] not in values_indexed:
+					values_indexed[value[key]] = []
+				values_indexed[value[key]].append(value)
 			else:
-				raise GeneralError('Key not seen')
+				raise KeyError('Key not seen - [{}]'.format(key))
 		return values_indexed
 
 	def interface_type(self, if_name):
-		cli_output = self.cli_command('/interface print without-paging terse', use_cache=True)
-		indexed_values = self.index_values(self.print_to_values_structured(cli_output))
+		indexed_values = self.index_values(
+			self.print_to_values_structured(
+				self.cli_command('/interface print without-paging terse', use_cache=True)
+			)
+		)
 		if if_name in indexed_values:
 			return indexed_values[if_name][0].get('type')
 		return None
 
 	def interfaces(self):
 		if self.can_snmp():
-			return [str(v.get('ifName')) for k, v in self.snmp_client.interfaces().iteritems()]
-		return [v.get('name') for v in self.print_to_values_structured(self.cli_command('/interface print without-paging terse'))]
+			return [str(value.get('ifName')) for value in self.snmp_client.interfaces().values()]
+		return [value.get('name') for value in self.print_to_values_structured(
+			self.cli_command('/interface print without-paging terse'))]
 
 	@staticmethod
 	def is_cli_error(output_line):
@@ -193,19 +206,25 @@ class ROS_Client(BaseClient):
 			return True
 		return False
 
-	def is_mikrotik(self, sys_object_id):
+	@staticmethod
+	def is_mikrotik(sys_object_id):
 		if sys_object_id.startswith('1.3.6.1.4.1.14988.1'):
 			return True
 		return False
 
 	def is_slave_interface(self, if_name):
-		cli_output = self.cli_command('/interface print without-paging terse', use_cache=True)
-		indexed_values = self.index_values(self.print_to_values_structured(cli_output))
-		return indexed_values.get(if_name, [])[0].get('flags', '').find('S') == -1
+		return self.index_values(
+			self.print_to_values_structured(
+				self.cli_command('/interface print without-paging terse', use_cache=True)
+			)
+		).get(if_name, [])[0].get('flags', '').find('S') == -1
 
 	def master_port(self, if_name):
-		cli_output = self.cli_command('/interface ethernet print without-paging terse', use_cache=True)
-		indexed_values = self.index_values(self.print_to_values_structured(cli_output))
+		indexed_values = self.index_values(
+			self.print_to_values_structured(
+				self.cli_command('/interface ethernet print without-paging terse', use_cache=True)
+			)
+		)
 		if if_name in indexed_values:
 			master_port = indexed_values[if_name][0].get('master-port')
 			if master_port is not None and master_port != 'none':
@@ -291,19 +310,22 @@ class ROS_Client(BaseClient):
 		return to_values_structured
 
 	def ros_datetime(self):
-		system_clock = self.print_to_values(self.cli_command('/system clock print without-paging', use_cache=False))
+		system_clock = self.print_to_values(
+			self.cli_command('/system clock print without-paging', use_cache=False)
+		)
 		date_string = '{} {} {}'.format(system_clock['date'], system_clock['time'], 'GMT')
 		return datetime.datetime.strptime(date_string, '%b/%d/%Y %H:%M:%S %Z')
 
 	def safe_mode_toggle(self):
 		if self.shell.channel.send(chr(0x18)) != 1:
 			raise GeneralError('send()')
-		hijack_safe_mode = "Hijacking Safe Mode from someone - unroll/release/don't take it [u/r/d]: "
+		hijack_safe_mode = \
+			"Hijacking Safe Mode from someone - unroll/release/don't take it [u/r/d]: "
 		self.shell.shell_prompt.add_prompt(hijack_safe_mode)
-		shell_output, retries_left = self.shell.read_until_prompt(10)
+		shell_output, _ = self.shell.read_until_prompt(10)
 		if self.shell.last_prompt == hijack_safe_mode:
 			self.shell.channel.send('r')
-			shell_output, retries_left = self.shell.read_until_prompt(10)
+			shell_output, _ = self.shell.read_until_prompt(10)
 			first_line = shell_output.pop(0)
 			if first_line == '114':
 				pass
@@ -313,11 +335,11 @@ class ROS_Client(BaseClient):
 		if len(shell_output) < 2:
 			raise Exception(shell_output[0])
 		if shell_output[1] == '[Safe Mode taken]':
-			if getattr(self, '_safe_mode_toggle', False) == True:
+			if self._safe_mode_toggle:
 				raise GeneralError('Mismatch with safe mode flag')
 			self._safe_mode_toggle = True
 		elif shell_output[1] == '[Safe Mode released]':
-			if getattr(self, '_safe_mode_toggle', False) == False:
+			if not self._safe_mode_toggle:
 				raise GeneralError('Mismatch with safe mode flag')
 			self._safe_mode_toggle = False
 		else:
@@ -328,7 +350,9 @@ class ROS_Client(BaseClient):
 		if self.can_snmp():
 			return self.snmp_client.os_version()
 		elif self.can_ssh():
-			return self.print_to_values(self.ssh_command('/system resource print without-paging')).get('version', '')
+			return self.print_to_values(
+				self.ssh_command('/system resource print without-paging')
+			).get('version', '')
 		return ''
 
 	def ssh_command(self, *args, **kwargs):
@@ -342,32 +366,34 @@ class ROS_Client(BaseClient):
 		return shell_output
 
 	def system_package_enabled(self, package):
-		cli_command = '/system package print without-paging terse'
-		indexed_values = self.index_values(self.print_to_values_structured(self.cli_command(cli_command, use_cache=True)))
-		return indexed_values.get(package, [])[0].get('flags', '').find('X') == -1
+		return self.index_values(
+			self.print_to_values_structured(
+				self.cli_command('/system package print without-paging terse', use_cache=True)
+			)
+		).get(package, [])[0].get('flags', '').find('X') == -1
 
 	@staticmethod
 	def to_seconds(time_format):
 		seconds = minutes = hours = days = weeks = 0
 
-		n = ''
+		num = ''
 		for c in time_format:
 			if c.isdigit():
-				n += c
+				num += c
 				continue
 			if c == 's':
-				seconds = int(n)
+				seconds = int(num)
 			elif c == 'm':
-				minutes = int(n)
+				minutes = int(num)
 			elif c == 'h':
-				hours = int(n)
+				hours = int(num)
 			elif c == 'd':
-				days = int(n)
+				days = int(num)
 			elif c == 'w':
-				weeks = int(n)
+				weeks = int(num)
 			else:
 				raise ValueError('Invalid specifier - [{}]'.format(c))
-			n = ''
+			num = ''
 
 		seconds += (minutes * 60)
 		seconds += (hours * 3600)
@@ -401,14 +427,20 @@ class ROS_Client(BaseClient):
 
 	def write_file_contents(self, name, contents=''):
 		self.write_file_size_check(contents)
-		cli_output = self.cli_command('/file set {} contents="{}"'.format(name, contents), use_cache=False)
+		cli_output = self.cli_command(
+			'/file set {} contents="{}"'.format(name, contents),
+			use_cache=False
+		)
 		if cli_output != []:
 			raise GeneralError('Cannot set contents - [{}]'.format(cli_output[0]))
 		return True
 
 	def write_rsc_file(self, name, contents=''):
 		self.write_file_size_check(contents)
-		cli_output = self.cli_command('/system routerboard export file={}'.format(name), use_cache=False)
+		cli_output = self.cli_command(
+			'/system routerboard export file={}'.format(name),
+			use_cache=False
+		)
 		if cli_output != []:
 			raise GeneralError('Cannot create file - [{}]'.format(cli_output[0]))
 		return self.write_file_contents('{}.rsc'.format(name), contents)
@@ -422,32 +454,24 @@ class ROS_Client(BaseClient):
 
 
 class SNMP_Client(snmp.SNMP_Client):
-	mtXRouterOs = (1, 3, 6, 1, 4, 1, 14988, 1, 1)
-	mtxrWireless = mtXRouterOs + (1, )
-	mtxrWlStatTable = mtxrWireless + (1, )
-	mtxrWlStatEntry = mtxrWlStatTable + (1, )
-	mtxrWlRtabTable = mtxrWireless + (2, )
-	mtxrWlRtabEntry = mtxrWlRtabTable + (1, )
-	mtxrWlApTable = mtxrWireless + (3, )
-	mtxrWlApEntry = mtxrWlApTable + (1, )
-	mtxrQueues = mtXRouterOs + (2, )
-	mtxrQueueSimpleTable = mtxrQueues + (1, )
-	mtxrQueueSimpleEntry = mtxrQueueSimpleTable + (1, )
-	mtxrHealth = mtXRouterOs + (3, )
-	mtxrLicense = mtXRouterOs + (4, )
-	mtrxLicVersion = mtxrLicense + (4, 0)
-	mtxrSystem = mtXRouterOs + (7, )
-	mtxrFirmwareVersion = mtxrSystem + (4, 0)
-	mtxrNeighborTable = mtXRouterOs + (11, 1)
-	mtxrNeighborTableEntry = mtxrNeighborTable + (1, )
-	mtxrInterfaceStatsTable = mtXRouterOs + (14, 1)
-	mtxrInterfaceStatsEntry = mtxrInterfaceStatsTable + (1, )
-	mtxrPartition = mtXRouterOs + (17, )
-	mtxrPartitionTable = mtxrPartition + (1, )
-	mtxrPartitionEntry = mtxrPartitionTable + (1, )
+	oid_lookup = {
+		'mtXRouterOs': (1, 3, 6, 1, 4, 1, 14988, 1, 1),
+		'mtxrWireless': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 1),
+		'mtxrWlStatEntry': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 1, 1, 1),
+		'mtxrWlRtabEntry': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 1, 2, 1),
+		'mtxrWlApEntry': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 1, 3, 1),
+		'mtxrQueueSimpleEntry': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 2, 1, 1),
+		'mtxrHealth': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 3),
+		'mtrxLicVersion': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 4, 4, 0),
+		'mtxrSystem': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 7),
+		'mtxrFirmwareVersion': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 7, 4, 0),
+		'mtxrNeighborTableEntry': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 11, 1, 1),
+		'mtxrInterfaceStatsEntry': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 14, 1, 1),
+		'mtxrPartitionEntry': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 17, 1, 1),
+	}
 
 	def fw_version(self):
-		return self.get_oid(SNMP_Client.mtxrFirmwareVersion)
+		return self.get_oid(SNMP_Client.oid_lookup['mtxrFirmwareVersion'])
 
 	def mtxr_health(self, column_names):
 		table_columns = {
@@ -470,8 +494,14 @@ class SNMP_Client(snmp.SNMP_Client):
 			'mtxrHlFanSpeed1': 17,
 			'mtxrHlFanSpeed2': 18,
 		}
-		health = self._table_entries(SNMP_Client.mtxrHealth, table_columns, column_names)[(0, )]
-		if health.get('mtxrHlActiveFan','') == 'n/a':
+
+		health = self._table_entries(
+			SNMP_Client.oid_lookup['mtxrHealth'],
+			table_columns,
+			column_names
+		)[(0, )]
+
+		if health.get('mtxrHlActiveFan', '') == 'n/a':
 			del health['mtxrHlActiveFan']
 		return health
 
@@ -485,8 +515,11 @@ class SNMP_Client(snmp.SNMP_Client):
 			'mtxrSystemBuildTime': 6,
 			'mtxrSystemFirmwareUpgradeVersion': 7,
 		}
-		system = self._table_entries(SNMP_Client.mtxrSystem, table_columns, column_names)[(0, )]
-		return system
+		return self._table_entries(
+			SNMP_Client.oid_lookup['mtxrSystem'],
+			table_columns,
+			column_names
+		)[(0, )]
 
 	def mtxrInterfaceStatsTable(self, column_names):
 		table_columns = {
@@ -558,7 +591,11 @@ class SNMP_Client(snmp.SNMP_Client):
 			'mtxrInterfaceStatsTxControl': 88,
 			'mtxrInterfaceStatsTxFragment': 89,
 		}
-		return self._table_entries(SNMP_Client.mtxrInterfaceStatsEntry, table_columns, column_names)
+		return self._table_entries(
+			SNMP_Client.oid_lookup['mtxrInterfaceStatsEntry'],
+			table_columns,
+			column_names
+		)
 
 	def mtxrNeighborTable(self, column_names):
 		table_columns = {
@@ -571,7 +608,11 @@ class SNMP_Client(snmp.SNMP_Client):
 			'mtxrNeighborSoftwareID': 7,
 			'mtxrNeighborInterfaceID': 8,
 		}
-		return self._table_entries(SNMP_Client.mtxrNeighborTableEntry, table_columns, column_names)
+		return self._table_entries(
+			SNMP_Client.oid_lookup['mtxrNeighborTableEntry'],
+			table_columns,
+			column_names
+		)
 
 	def mtxrPartitionTable(self, column_names):
 		table_columns = {
@@ -582,7 +623,11 @@ class SNMP_Client(snmp.SNMP_Client):
 			'mtxrPartitionActive': 5,
 			'mtxrPartitionRunning': 6,
 		}
-		return self._table_entries(SNMP_Client.mtxrPartitionEntry, table_columns, column_names)
+		return self._table_entries(
+			SNMP_Client.oid_lookup['mtxrPartitionEntry'],
+			table_columns,
+			column_names
+		)
 
 	def mtxrQueueSimpleTable(self, column_names):
 		table_columns = {
@@ -602,7 +647,11 @@ class SNMP_Client(snmp.SNMP_Client):
 			'mtxrQueueSimpleDroppedIn': 14,
 			'mtxrQueueSimpleDroppedOut': 15,
 		}
-		return self._table_entries(SNMP_Client.mtxrQueueSimpleEntry, table_columns, column_names)
+		return self._table_entries(
+			SNMP_Client.oid_lookup['mtxrQueueSimpleEntry'],
+			table_columns,
+			column_names
+		)
 
 	def mtxrWlApTable(self, column_names):
 		table_columns = {
@@ -618,7 +667,11 @@ class SNMP_Client(snmp.SNMP_Client):
 			'mtxrWlApOverallTxCCQ': 10,
 			'mtxrWlApAuthClientCount': 11,
 		}
-		return self._table_entries(SNMP_Client.mtxrWlApEntry, table_columns, column_names)
+		return self._table_entries(
+			SNMP_Client.oid_lookup['mtxrWlApEntry'],
+			table_columns,
+			column_names
+		)
 
 	def mtxrWlRtabTable(self, column_names):
 		table_columns = {
@@ -642,9 +695,14 @@ class SNMP_Client(snmp.SNMP_Client):
 			'mtxrWlRtabRxStrengthCh2': 18,
 			'mtxrWlRtabTxStength': 19,
 		}
-		return self._table_entries(SNMP_Client.mtxrWlRtabEntry, table_columns, column_names)
+		return self._table_entries(
+			SNMP_Client.oid_lookup['mtxrWlRtabEntry'],
+			table_columns,
+			column_names
+		)
 
 	def mtxrWlStatTable(self, column_names):
+		"""Get Wireless Stats"""
 		table_columns = {
 			'mtxrWlStatIndex': 1,
 			'mtxrWlStatTxRate': 2,
@@ -655,10 +713,15 @@ class SNMP_Client(snmp.SNMP_Client):
 			'mtxrWlStatFreq': 7,
 			'mtxrWlStatBand': 8,
 		}
-		return self._table_entries(SNMP_Client.mtxrWlStatEntry, table_columns, column_names)
+		return self._table_entries(
+			SNMP_Client.oid_lookup['mtxrWlStatEntry'],
+			table_columns,
+			column_names
+		)
 
 	def os_version(self):
-		return str(self.get_oid(SNMP_Client.mtrxLicVersion))
+		"""Return the Routerboard OS version"""
+		return str(self.get_oid(SNMP_Client.oid_lookup['mtrxLicVersion']))
 
 
 class SSH_Client(ssh.SSH_Client):
@@ -666,11 +729,11 @@ class SSH_Client(ssh.SSH_Client):
 
 
 class Shell(ssh.Shell):
-	def exit(self):
-		return super(Shell, self).exit('/quit')
-
 	control_char_regexp = re.compile(r'{}\[(9999B|c)'.format(chr(0x1B)))
 
 	def on_output_line(self, *args, **kwargs):
-		output_line = re.sub(Shell.control_char_regexp, '', super(Shell, self).on_output_line(*args, **kwargs))
-		return output_line.lstrip('\r')
+		return re.sub(
+			Shell.control_char_regexp,
+			'',
+			super(Shell, self).on_output_line(*args, **kwargs)
+		).lstrip('\r')
