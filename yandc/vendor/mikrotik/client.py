@@ -1,9 +1,9 @@
 import datetime
-import re
 import StringIO
 #
-from .vendor_base import BaseClient
-from . import snmp, ssh
+from ..base import BaseClient
+from yandc import exception, snmp, ssh
+from .shell import *
 
 try:
 	import rosapi
@@ -13,9 +13,9 @@ else:
 	have_rosapi = True
 
 
-class ROS_Client(BaseClient):
+class Client(BaseClient):
 	def __init__(self, *args, **kwargs):
-		super(ROS_Client, self).__init__(*args, **kwargs)
+		super(Client, self).__init__(*args, **kwargs)
 
 		grouped_kwargs = self.group_kwargs('snmp_', 'ssh_', 'rosapi_', **kwargs)
 
@@ -23,13 +23,13 @@ class ROS_Client(BaseClient):
 			snmp_client = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_'])
 			try:
 				if not snmp_client.sysObjectID().startswith('1.3.6.1.4.1.14988.1'):
-					raise ValueError('Not a Mikrotik device')
+					raise exception.ClientError('Not a Mikrotik device')
 			except snmp.SNMP_Exception:
 				pass
 			else:
 				self.snmp_client = snmp_client
 
-		self._safe_mode_toggle = False
+		self.in_safe_mode = False
 		self._cli_output_cache = {}
 
 		if have_rosapi:
@@ -43,10 +43,10 @@ class ROS_Client(BaseClient):
 			if 'password' not in grouped_kwargs['ssh_'] and 'password' in kwargs:
 				grouped_kwargs['ssh_']['password'] = kwargs['password']
 
-			shell_prompt = ssh.ShellPrompt(
+			shell_prompts = ssh.ShellPrompt(
 				ssh.ShellPrompt.regexp_prompt(r'\[[^\@]+\@[^\]]+\] > $')
 			)
-			shell_prompt.add_prompt(
+			shell_prompts.add_prompt(
 				ssh.ShellPrompt.regexp_prompt(r'\[[^\@]+\@[^\]]+\] <SAFE> $')
 			)
 
@@ -55,18 +55,21 @@ class ROS_Client(BaseClient):
 				grouped_kwargs['ssh_']['username'] += '+ct0h160w'
 
 				if self.can_snmp():
-					shell_prompt.add_prompt(
+					shell_prompts.add_prompt(
 						'[' + original_username + '@' + self.snmp_client.sysName() + '] > '
 					)
-					shell_prompt.add_prompt(
+					shell_prompts.add_prompt(
 						'[' + original_username + '@' + self.snmp_client.sysName() + '] <SAFE> '
 					)
 
-			self.ssh_client = SSH_Client(kwargs['host'], **grouped_kwargs['ssh_'])
-			self.shell = Shell(self.ssh_client, shell_prompt)
-			self.shell.channel.set_combine_stderr(True)
+			self.ssh_client = ssh.Client(kwargs['host'], **grouped_kwargs['ssh_'])
+			self.ssh_shell = Shell(self.ssh_client, shell_prompts)
+			self.ssh_shell.channel.set_combine_stderr(True)
 
 			self._datetime_offset = datetime.datetime.now() - self.ros_datetime()
+
+	def __repr__(self):
+		return 'mikrotik.Client({})'.format(repr(self.ssh_client))
 
 	def cli_command(self, command, *args, **kwargs):
 		"""Run the specified command using the Routerboard CLI"""
@@ -80,7 +83,7 @@ class ROS_Client(BaseClient):
 		if use_cache:
 			self._cli_output_cache[command] = ssh_output
 		return ssh_output
-#		raise GeneralError('No CLI handler')
+#		raise exception.ClientError('No CLI handler')
 
 	def can_rosapi(self):
 		"""Can make use of the ROSAPI package"""
@@ -89,60 +92,23 @@ class ROS_Client(BaseClient):
 		return False
 
 	def configure_via_cli(self, config_commands):
-		if not self._safe_mode_toggle:
-			if not self.safe_mode_toggle():
-				self.safe_mode_toggle()
-
+		if not self.in_safe_mode:
+			self.safe_mode_toggle()
 		for config_line in config_commands:
 			cli_output = self.cli_command(config_line, use_cache=False)
 			if cli_output != []:
-				raise ValueError(cli_output[0])
-
-		if self.safe_mode_toggle():
-			self.safe_mode_toggle()
+				raise exception.ClientError(cli_output[0])
+		self.safe_mode_toggle()
 
 	def disconnect(self):
 		if self.can_rosapi():
 			pass
-		if self.can_ssh() and hasattr(self, 'shell'):
-			if self._safe_mode_toggle:
-				if self.safe_mode_toggle():
-					self.safe_mode_toggle()
-			self.shell.exit('/quit')
-			del self.shell
-		super(ROS_Client, self).disconnect()
-
-	@staticmethod
-	def export_concat(export_config):
-		concat_output = []
-
-		export_section = None
-		concat_line = []
-
-		for line in export_config:
-			if line[0] == '/':
-				export_section = line
-				continue
-			elif line[0] == '#':
-				continue
-			elif line[-1:] == '\\':
-				concat_line.append(line[:-1].strip())
-			else:
-				concat_line.append(line.lstrip())
-				concat_output.append('{} {}'.format(export_section, ' '.join(concat_line)))
-				concat_line = []
-
-		return concat_output
-
-	def file_exists(self, filename):
-		indexed_values = self.index_values(
-			self.print_to_values_structured(
-				self.cli_command('/file print without-paging terse')
-			)
-		)
-		if filename in indexed_values:
-			return True
-		return False
+		if self.can_ssh() and hasattr(self, 'ssh_shell'):
+			if self.in_safe_mode:
+				self.safe_mode_toggle()
+			self.ssh_shell.exit('/quit')
+			del self.ssh_shell
+		super(Client, self).disconnect()
 
 	def get_config(self, source=None, section=None):
 		if section is not None:
@@ -160,9 +126,6 @@ class ROS_Client(BaseClient):
 				self.cli_command('/interface {} print without-paging terse'.format(if_type))
 			)
 		).get(if_name)
-
-	def in_configure_mode(self, *args, **kwargs):
-		return False
 
 	@staticmethod
 	def index_values(values, key='name'):
@@ -206,6 +169,28 @@ class ROS_Client(BaseClient):
 			return True
 		return False
 
+	def is_directory(self, candidate_directory):
+		indexed_values = self.index_values(
+			self.print_to_values_structured(
+				self.cli_command('/file print without-paging terse')
+			)
+		)
+		if candidate_directory in indexed_values:
+			if indexed_values[candidate_directory]['type'] == 'directory':
+				return True
+		return False
+
+	def is_file(self, candidate_file):
+		indexed_values = self.index_values(
+			self.print_to_values_structured(
+				self.cli_command('/file print without-paging terse')
+			)
+		)
+		if candidate_file in indexed_values:
+			if indexed_values[candidate_file]['type'] != 'directory':
+				return True
+		return False
+
 	@staticmethod
 	def is_mikrotik(sys_object_id):
 		if sys_object_id.startswith('1.3.6.1.4.1.14988.1'):
@@ -232,45 +217,46 @@ class ROS_Client(BaseClient):
 		return None
 
 	@staticmethod
-	def parse_as_key_value(kv_parts):
+	def parse_as_key_value(keys_and_values):
 		as_key_value = {}
 
 		last_key = None
-		for kv in kv_parts:
-			if kv.find('=') != -1:
-				k, v = kv.split('=', 1)
-				if k in as_key_value:
-					raise GeneralError('Key already seen - [{}]'.format(k))
-				as_key_value[k] = v
-				last_key = k
+		for kv_part in keys_and_values:
+			if kv_part.find('=') != -1:
+				key, value = kv_part.split('=', 1)
+				if key in as_key_value:
+					raise KeyError('Key already seen - [{}]'.format(key))
+				as_key_value[key] = value
+				last_key = key
 			elif last_key is not None:
-				as_key_value[last_key] = ' '.join([as_key_value[last_key], kv])
+				as_key_value[last_key] += ' {}'.format(kv_part)
 			else:
-				raise GeneralError(kv)
+				raise exception.ClientError(kv_part)
 
 		return as_key_value
 
-	def parse_print_as_value(self, as_values):
+	@classmethod
+	def parse_print_as_value(cls, print_as_values):
 		as_value = []
-		for line in as_values.replace('.id=*', '\n.id=*').splitlines():
+		for line in print_as_values.replace('.id=*', '\n.id=*').splitlines():
 			if line == '':
 				continue
-			as_value.append(self.parse_as_key_value(line.split(';')))
+			as_value.append(cls.parse_as_key_value(line.split(';')))
 		return as_value
 
 	@staticmethod
 	def print_concat(print_output):
-		concat_output = []
+		concat = []
 		for line in print_output:
 			if len(line) == 0:
 				continue
 			if line.startswith('   '):
-				concat_output[-1] = ' '.join([concat_output[-1], line.strip()])
+				concat[-1] = ' '.join([concat[-1], line.strip()])
 			else:
 				if line.find(';;; ') != -1:
 					line = line.replace(';;; ', 'comment=')
-				concat_output.append(line.strip())
-		return concat_output
+				concat.append(line.strip())
+		return concat
 
 	@staticmethod
 	def print_to_values(print_output):
@@ -280,11 +266,12 @@ class ROS_Client(BaseClient):
 				continue
 			key, value = line.split(':', 1)
 			if key in to_values:
-				raise GeneralError('Key already seen - [{}]'.format(key))
+				raise KeyError('Key already seen - [{}]'.format(key))
 			to_values[key.strip()] = value.strip()
 		return to_values
 
-	def print_to_values_structured(self, print_output):
+	@classmethod
+	def print_to_values_structured(cls, print_output):
 		to_values_structured = []
 		for line in print_output:
 			line_parts = line.strip().split()
@@ -297,7 +284,7 @@ class ROS_Client(BaseClient):
 			flags_seen = ''
 			while True:
 				if not len(line_parts):
-					raise ValueError('No parts available')
+					raise exception.ClientError('No parts available')
 				part = line_parts.pop(0)
 				if part.find('=') == -1:
 					flags_seen += part
@@ -306,7 +293,7 @@ class ROS_Client(BaseClient):
 					line_parts.insert(0, 'flags={}'.format(flags_seen))
 					line_parts.insert(0, 'index={}'.format(index_seen))
 					break
-			to_values_structured.append(self.parse_as_key_value(line_parts))
+			to_values_structured.append(cls.parse_as_key_value(line_parts))
 		return to_values_structured
 
 	def ros_datetime(self):
@@ -316,35 +303,37 @@ class ROS_Client(BaseClient):
 		date_string = '{} {} {}'.format(system_clock['date'], system_clock['time'], 'GMT')
 		return datetime.datetime.strptime(date_string, '%b/%d/%Y %H:%M:%S %Z')
 
+	def safe_mode_exit(self):
+		if self.ssh_shell.channel.send(chr(0x04)) != 1:
+			raise exception.ClientError('Failed to send ^X')
+		self.in_safe_mode = False
+
 	def safe_mode_toggle(self):
-		if self.shell.channel.send(chr(0x18)) != 1:
-			raise GeneralError('send()')
+		if self.ssh_shell.channel.send(chr(0x18)) != 1:
+			raise exception.ClientError('Failed to send ^D')
 		hijack_safe_mode = \
 			"Hijacking Safe Mode from someone - unroll/release/don't take it [u/r/d]: "
-		self.shell.shell_prompt.add_prompt(hijack_safe_mode)
-		shell_output, _ = self.shell.read_until_prompt(10)
-		if self.shell.last_prompt == hijack_safe_mode:
-			self.shell.channel.send('r')
-			shell_output, _ = self.shell.read_until_prompt(10)
+		self.ssh_shell.shell_prompts.add_prompt(hijack_safe_mode)
+		shell_output, _ = self.ssh_shell.read_until_prompt(10)
+		if self.ssh_shell.last_prompt == hijack_safe_mode:
+			self.ssh_shell.channel.send('r')
+			shell_output, _ = self.ssh_shell.read_until_prompt(10)
 			first_line = shell_output.pop(0)
 			if first_line == '114':
 				pass
-#				first_line = shell_output.pop(0)
-#			if first_line != "Released someone's Safe Mode":
-#				print first_line
 		if len(shell_output) < 2:
-			raise Exception(shell_output[0])
+			raise exception.ClientError(shell_output[0])
 		if shell_output[1] == '[Safe Mode taken]':
-			if self._safe_mode_toggle:
-				raise GeneralError('Mismatch with safe mode flag')
-			self._safe_mode_toggle = True
+			if self.in_safe_mode:
+				raise exception.ClientError('Mismatch with in_safe_mode')
+			self.in_safe_mode = True
 		elif shell_output[1] == '[Safe Mode released]':
-			if not self._safe_mode_toggle:
-				raise GeneralError('Mismatch with safe mode flag')
-			self._safe_mode_toggle = False
+			if not self.in_safe_mode:
+				raise exception.ClientError('Mismatch with in_safe_mode')
+			self.in_safe_mode = False
 		else:
-			raise GeneralError(shell_output[1])
-		return self._safe_mode_toggle
+			raise exception.ClientError(shell_output[1])
+		return self.in_safe_mode
 
 	def software_version(self):
 		if self.can_snmp():
@@ -357,12 +346,13 @@ class ROS_Client(BaseClient):
 
 	def ssh_command(self, *args, **kwargs):
 		if not self.can_ssh():
-			raise ValueError('No SSH client')
-		if not hasattr(self, 'shell'):
-			raise ValueError('No shell channel')
-		shell_output = self.shell.command(*args, **kwargs)
-		if self.shell.last_prompt.endswith(' <SAFE> '):
-			self._safe_mode_toggle = True
+			raise exception.ClientError('No SSH client')
+		if not hasattr(self, 'ssh_shell'):
+			raise exception.ClientError('No shell channel')
+		shell_output = self.ssh_shell.command(*args, **kwargs)
+		if self.ssh_shell.last_prompt.endswith(' <SAFE> '):
+			if not self.in_safe_mode:
+				raise exception.ClientError('Mismatch between in_safe_mode and prompt')
 		return shell_output
 
 	def system_package_enabled(self, package):
@@ -376,24 +366,24 @@ class ROS_Client(BaseClient):
 	def to_seconds(time_format):
 		seconds = minutes = hours = days = weeks = 0
 
-		num = ''
-		for c in time_format:
-			if c.isdigit():
-				num += c
+		number_buffer = ''
+		for current_character in time_format:
+			if current_character.isdigit():
+				number_buffer += current_character
 				continue
-			if c == 's':
-				seconds = int(num)
-			elif c == 'm':
-				minutes = int(num)
-			elif c == 'h':
-				hours = int(num)
-			elif c == 'd':
-				days = int(num)
-			elif c == 'w':
-				weeks = int(num)
+			if current_character == 's':
+				seconds = int(number_buffer)
+			elif current_character == 'm':
+				minutes = int(number_buffer)
+			elif current_character == 'h':
+				hours = int(number_buffer)
+			elif current_character == 'd':
+				days = int(number_buffer)
+			elif current_character == 'w':
+				weeks = int(number_buffer)
 			else:
-				raise ValueError('Invalid specifier - [{}]'.format(c))
-			num = ''
+				raise exception.ClientError('Invalid specifier - [{}]'.format(current_character))
+			number_buffer = ''
 
 		seconds += (minutes * 60)
 		seconds += (hours * 3600)
@@ -423,7 +413,7 @@ class ROS_Client(BaseClient):
 	@staticmethod
 	def write_file_size_check(contents):
 		if len(contents) > 4095:
-			raise ValueError('Maximum file size exceeded')
+			raise exception.ClientError('Maximum file size exceeded')
 
 	def write_file_contents(self, name, contents=''):
 		self.write_file_size_check(contents)
@@ -432,7 +422,7 @@ class ROS_Client(BaseClient):
 			use_cache=False
 		)
 		if cli_output != []:
-			raise GeneralError('Cannot set contents - [{}]'.format(cli_output[0]))
+			raise exception.ClientError('Cannot set contents - [{}]'.format(cli_output[0]))
 		return True
 
 	def write_rsc_file(self, name, contents=''):
@@ -442,18 +432,18 @@ class ROS_Client(BaseClient):
 			use_cache=False
 		)
 		if cli_output != []:
-			raise GeneralError('Cannot create file - [{}]'.format(cli_output[0]))
+			raise exception.ClientError('Cannot create file - [{}]'.format(cli_output[0]))
 		return self.write_file_contents('{}.rsc'.format(name), contents)
 
 	def write_txt_file(self, name, contents=''):
 		self.write_file_size_check(contents)
 		cli_output = self.cli_command('/file print file={}'.format(name), use_cache=False)
 		if cli_output != []:
-			raise GeneralError('Cannot create file - [{}]'.format(cli_output[0]))
+			raise exception.ClientError('Cannot create file - [{}]'.format(cli_output[0]))
 		return self.write_file_contents('{}.txt'.format(name), contents)
 
 
-class SNMP_Client(snmp.SNMP_Client):
+class SNMP_Client(snmp.Client):
 	oid_lookup = {
 		'mtXRouterOs': (1, 3, 6, 1, 4, 1, 14988, 1, 1),
 		'mtxrWireless': (1, 3, 6, 1, 4, 1, 14988, 1, 1, 1),
@@ -722,18 +712,3 @@ class SNMP_Client(snmp.SNMP_Client):
 	def os_version(self):
 		"""Return the Routerboard OS version"""
 		return str(self.get_oid(SNMP_Client.oid_lookup['mtrxLicVersion']))
-
-
-class SSH_Client(ssh.SSH_Client):
-	pass
-
-
-class Shell(ssh.Shell):
-	control_char_regexp = re.compile(r'{}\[(9999B|c)'.format(chr(0x1B)))
-
-	def on_output_line(self, *args, **kwargs):
-		return re.sub(
-			Shell.control_char_regexp,
-			'',
-			super(Shell, self).on_output_line(*args, **kwargs)
-		).lstrip('\r')
