@@ -55,7 +55,7 @@ class ConnectHandler(object):
 		return NotImplementedError('exit_config_mode()')
 
 	def find_prompt(self, *args):
-		return self.yandc_client.shell.last_prompt
+		return self.yandc_client.ssh_shell.last_prompt
 
 	def send_command(self, command, *args):
 		return self.yandc_client.cli_command(command)
