@@ -1,29 +1,32 @@
 from pysnmp.entity.rfc3413.oneliner import cmdgen
 from pyasn1.type import univ
+#
+from .exception import *
 
+__all__ = ['Client']
 
-class SNMP_Client(object):
-	oid_lookup = {
-		'bgp4PathAttrEntry': (1, 3, 6, 1, 2, 1, 15, 6, 1),
-		'bgpPeerEntry': (1, 3, 6, 1, 2, 1, 15, 3, 1),
-		'dot1dTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 4, 3, 1),
-		'dot1dBasePortEntry': (1, 3, 6, 1, 2, 1, 17, 1, 4, 1),
-		'dot1qTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 2, 2, 1),
-		'dot1qVlanCurrentEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 4, 2, 1),
-		'entPhysicalEntry': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1),
-		'entPhysicalMfgName': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1, 12, 1),
-		'ifEntry': (1, 3, 6, 1, 2, 1, 2, 2, 1),
-		'ifXEntry': (1, 3, 6, 1, 2, 1, 31, 1, 1, 1),
-		'inetCidrRouteEntry': (1, 3, 6, 1, 2, 1, 4, 24, 7, 1),
-		'ipAddressEntry': (1, 3, 6, 1, 2, 1, 4, 34, 1),
-		'ipAddressPrefixEntry': (1, 3, 6, 1, 2, 1, 4, 32, 1),
-		'ipNetToMediaEntry': (1, 3, 6, 1, 2, 1, 4, 22, 1),
-		'ipRouteEntry': (1, 3, 6, 1, 2, 1, 4, 21, 1),
-		'lldpLocPortEntry': (1, 0, 8802, 1, 1, 2, 1, 3, 7, 1),
-		'lldpRemEntry': (1, 0, 8802, 1, 1, 2, 1, 4, 1, 1),
-		'sysOREntry': (1, 3, 6, 1, 2, 1, 1, 9, 1),
-	}
+_Client__oid_lookup = {
+	'bgp4PathAttrEntry': (1, 3, 6, 1, 2, 1, 15, 6, 1),
+	'bgpPeerEntry': (1, 3, 6, 1, 2, 1, 15, 3, 1),
+	'dot1dTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 4, 3, 1),
+	'dot1dBasePortEntry': (1, 3, 6, 1, 2, 1, 17, 1, 4, 1),
+	'dot1qTpFdbEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 2, 2, 1),
+	'dot1qVlanCurrentEntry': (1, 3, 6, 1, 2, 1, 17, 7, 1, 4, 2, 1),
+	'entPhysicalEntry': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1),
+	'entPhysicalMfgName': (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1, 12, 1),
+	'ifEntry': (1, 3, 6, 1, 2, 1, 2, 2, 1),
+	'ifXEntry': (1, 3, 6, 1, 2, 1, 31, 1, 1, 1),
+	'inetCidrRouteEntry': (1, 3, 6, 1, 2, 1, 4, 24, 7, 1),
+	'ipAddressEntry': (1, 3, 6, 1, 2, 1, 4, 34, 1),
+	'ipAddressPrefixEntry': (1, 3, 6, 1, 2, 1, 4, 32, 1),
+	'ipNetToMediaEntry': (1, 3, 6, 1, 2, 1, 4, 22, 1),
+	'ipRouteEntry': (1, 3, 6, 1, 2, 1, 4, 21, 1),
+	'lldpLocPortEntry': (1, 0, 8802, 1, 1, 2, 1, 3, 7, 1),
+	'lldpRemEntry': (1, 0, 8802, 1, 1, 2, 1, 4, 1, 1),
+	'sysOREntry': (1, 3, 6, 1, 2, 1, 1, 9, 1),
+}
 
+class Client(object):
 	def __del__(self):
 		self.disconnect()
 
@@ -37,6 +40,9 @@ class SNMP_Client(object):
 		self._transport = cmdgen.UdpTransportTarget((host, port), timeout=1.0, retries=1)
 		self._authdata = cmdgen.CommunityData('securityIndex', community)
 
+	def __repr__(self):
+		return 'snmp.Client({}, {})'.format(repr(self._transport), repr(self._authdata))
+
 	def bgpIdentifier(self):
 		return self.get_oid((1, 3, 6, 1, 2, 1, 15, 4, 0))
 
@@ -45,7 +51,7 @@ class SNMP_Client(object):
 
 	def bgpPeerTable(self, column_names):
 		bgp_peer_table = self._table_entries(
-			SNMP_Client.oid_lookup['bgpPeerEntry'],
+			__oid_lookup['bgpPeerEntry'],
 			{
 				'bgpPeerIdentifier': 1,
 				'bgpPeerState': 2,
@@ -87,7 +93,7 @@ class SNMP_Client(object):
 
 	def bgp4PathAttrTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['bgp4PathAttrEntry'],
+			__oid_lookup['bgp4PathAttrEntry'],
 			{
 				'bgp4PathAttrPeer': 1,
 				'bgp4PathAttrIpAddrPrefixLen': 2,
@@ -180,7 +186,7 @@ class SNMP_Client(object):
 
 	def dot1dBasePortTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['dot1dBasePortEntry'],
+			__oid_lookup['dot1dBasePortEntry'],
 			{
 				'dot1dBasePort': 1,
 				'dot1dBasePortIfIndex': 2,
@@ -193,7 +199,7 @@ class SNMP_Client(object):
 
 	def dot1dTpFdbTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['dot1dTpFdbEntry'],
+			__oid_lookup['dot1dTpFdbEntry'],
 			{
 				'dot1dTpFdbAddress': 1,
 				'dot1dTpFdbPort': 2,
@@ -204,7 +210,7 @@ class SNMP_Client(object):
 
 	def dot1qTpFdbTable(self, column_names):
 		dot1q_tp_fdb_table = self._table_entries(
-			SNMP_Client.oid_lookup['dot1qTpFdbEntry'],
+			__oid_lookup['dot1qTpFdbEntry'],
 			{
 				'dot1qTpFdbAddress': 1,
 				'dot1qTpFdbPort': 2,
@@ -221,7 +227,7 @@ class SNMP_Client(object):
 
 	def dot1qVlanCurrentTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['dot1qVlanCurrentEntry'],
+			__oid_lookup['dot1qVlanCurrentEntry'],
 			{
 				'dot1qVlanTimeMark': 1,
 				'dot1qVlanIndex': 2,
@@ -243,7 +249,7 @@ class SNMP_Client(object):
 	def enterprise(self):
 		sys_object_id = self.sysObjectID()
 
-		vendor = self.get_oid(SNMP_Client.oid_lookup['entPhysicalMfgName'])
+		vendor = self.get_oid(__oid_lookup['entPhysicalMfgName'])
 		if vendor == '':
 			if sys_object_id.startswith('1.3.6.1.4.1.2544.1'):
 				vendor = 'Adva'
@@ -267,7 +273,7 @@ class SNMP_Client(object):
 
 	def entPhysicalTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['entPhysicalEntry'],
+			__oid_lookup['entPhysicalEntry'],
 			{
 				'entPhysicalIndex': 1,
 				'entPhysicalDescr': 2,
@@ -354,7 +360,7 @@ class SNMP_Client(object):
 
 	def ifTable(self, column_names):
 		if_table = self._table_entries(
-			SNMP_Client.oid_lookup['ifEntry'],
+			__oid_lookup['ifEntry'],
 			{
 				'ifIndex': 1,
 				'ifDescr': 2,
@@ -390,7 +396,7 @@ class SNMP_Client(object):
 
 	def ifXTable(self, column_names):
 		if_table = self._table_entries(
-			SNMP_Client.oid_lookup['ifXEntry'],
+			__oid_lookup['ifXEntry'],
 			{
 				'ifName': 1,
 				'ifInMulticastPkts': 2,
@@ -423,7 +429,7 @@ class SNMP_Client(object):
 
 	def inetCidrRouteTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['inetCidrRouteEntry'],
+			__oid_lookup['inetCidrRouteEntry'],
 			{
 				'inetCidrRouteDestType': 1,
 				'inetCidrRouteDest': 2,
@@ -452,7 +458,7 @@ class SNMP_Client(object):
 
 	def ipAddressPrefixTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['ipAddressPrefixEntry'],
+			__oid_lookup['ipAddressPrefixEntry'],
 			{
 				'ipAddressPrefixIfIndex': 1,
 				'ipAddressPrefixType': 2,
@@ -469,7 +475,7 @@ class SNMP_Client(object):
 
 	def ipAddressTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['ipAddressEntry'],
+			__oid_lookup['ipAddressEntry'],
 			{
 				'ipAddressAddrType': 1,
 				'ipAddressAddr': 2,
@@ -488,7 +494,7 @@ class SNMP_Client(object):
 
 	def ipNetToMediaTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['ipNetToMediaEntry'],
+			__oid_lookup['ipNetToMediaEntry'],
 			{
 				'ipNetToMediaIfIndex': 1,
 				'ipNetToMediaPhysAddress': 2,
@@ -500,7 +506,7 @@ class SNMP_Client(object):
 
 	def ipRouteTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['ipRouteEntry'],
+			__oid_lookup['ipRouteEntry'],
 			{
 				'ipRouteDest': 1,
 				'ipRouteIfIndex': 2,
@@ -521,7 +527,7 @@ class SNMP_Client(object):
 
 	def lldpLocPortTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['lldpLocPortEntry'],
+			__oid_lookup['lldpLocPortEntry'],
 			{
 				'lldpLocPortNum': 1,
 				'lldpLocPortIdSubtype': 2,
@@ -533,7 +539,7 @@ class SNMP_Client(object):
 
 	def lldpRemTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['lldpRemEntry'],
+			__oid_lookup['lldpRemEntry'],
 			{
 				'lldpRemTimeMark': 1,
 				'lldpRemLocalPortNum': 2,
@@ -568,7 +574,7 @@ class SNMP_Client(object):
 
 	def sysORTable(self, column_names):
 		return self._table_entries(
-			SNMP_Client.oid_lookup['sysOREntry'],
+			__oid_lookup['sysOREntry'],
 			{
 				'sysORIndex': 1,
 				'sysORID': 2,
@@ -667,8 +673,3 @@ class SNMP_Client(object):
 
 			table_entries[table_index][table_entry] = value
 		return table_entries
-
-
-class SNMP_Exception(Exception):
-	"""Base SNMP error class"""
-	pass

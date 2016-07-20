@@ -1,10 +1,13 @@
-import re
+"""Simple SSH client class"""
+
 import socket
 #
 import paramiko
+#
+from .exception import AuthenticationError, ConnectError
 
 
-class SSH_Client(object):
+class Client(object):
 	"""Simple SSH client class"""
 	def __del__(self):
 		self.disconnect()
@@ -33,7 +36,7 @@ class SSH_Client(object):
 		else:
 			self.on_connect(paramiko_transport)
 
-		paramiko_transport.set_keepalive(1)
+		paramiko_transport.set_keepalive(5)
 
 #		auth_types = []
 
@@ -42,7 +45,7 @@ class SSH_Client(object):
 #		except paramiko.BadAuthenticationType as auth_error:
 #			auth_types = auth_error.allowed_types
 #		except paramiko.SSHException as ssh_error:
-#			raise SSH_Exception(ssh_error)
+#			raise GeneralError(ssh_error)
 
 		try:
 			paramiko_transport.auth_password(kwargs['username'], kwargs['password'])
@@ -54,6 +57,9 @@ class SSH_Client(object):
 			)
 		else:
 			self.paramiko_transport = paramiko_transport
+
+	def __repr__(self):
+		return 'ssh.Client({})'.format(repr(self.paramiko_transport))
 
 	def channel(self):
 		if 'get_banner' in dir(self.paramiko_transport):
@@ -83,182 +89,3 @@ class SSH_Client(object):
 
 	def sftp_client(self):
 		return paramiko.SFTPClient.from_transport(self.paramiko_transport)
-
-
-class Shell(object):
-	"""SSH shell class"""
-	def __del__(self):
-		self.exit()
-
-	def __enter__(self):
-		return self
-
-	def __exit__(self, exception_type, exception_value, traceback):
-		self.exit()
-
-	def __init__(self, ssh_client, shell_prompt, terminal_type='dumb'):
-		assert isinstance(ssh_client, SSH_Client)
-		assert isinstance(shell_prompt, ShellPrompt)
-
-		self.ssh_client = ssh_client
-		self.shell_prompt = shell_prompt
-		self.last_prompt = ''
-
-		self.channel = ssh_client.channel()
-		self.channel.settimeout(0.2)
-#		self.channel.set_combine_stderr(True)
-		self.channel.get_pty(terminal_type, 160, 80)
-		self.channel.invoke_shell()
-
-		banner, retries_left = self.read_until_prompt()
-		if retries_left == 0:
-			if len(banner) == 0:
-				raise SSH_Exception('Cannot auto-detect prompt')
-			timeout_prompt = banner.pop()
-			self.shell_prompt.add_prompt(timeout_prompt)
-			self.command('\n', 5)
-		self.on_banner(banner)
-
-	def command(self, command, prompt_retries=40):
-		send_command = command.rstrip('\r\n')
-		if self.channel.send(send_command + '\r') != (len(send_command) + 1):
-			raise SSH_Exception('Did not send all of command')
-		if prompt_retries:
-			while range(10, 0, -1):
-				raw_output = self._gets()
-				if raw_output != '':
-					output_line = self.on_output_line(raw_output)
-					if output_line != send_command:
-						raise SSH_Exception('Command echo mismatch')
-					break
-			else:
-				raise SSH_Exception('Command not echoed')
-		output, retries_left = self.read_until_prompt(prompt_retries)
-		if prompt_retries != 0 and retries_left == 0:
-			raise SSH_Exception('Prompt not seen')
-		return output
-
-	def exit(self, exit_command='exit'):
-		if hasattr(self, 'channel') and self.ssh_client.is_active():
-			self.channel.send(exit_command)
-			self.channel.close()
-			del self.channel
-
-	def on_banner(self, banner):
-		pass
-
-	@staticmethod
-	def on_output_line(output_line):
-		return output_line.rstrip('\r\n')
-
-	def on_prompt(self, prompt):
-		pass
-
-	def read_until_prompt(self, prompt_retries=25):
-		output = []
-		while prompt_retries:
-			raw_output = self._gets()
-			if raw_output == '':
-				prompt_retries -= 1
-			else:
-				output_line = self.on_output_line(raw_output)
-				if self.shell_prompt.is_prompt(output_line):
-					self.last_prompt = output_line
-					self.on_prompt(output_line)
-					break
-				output.append(output_line)
-		return (output, prompt_retries)
-
-	@staticmethod
-	def _getc(chan):
-		if chan.recv_ready():
-			return chan.recv(1)
-		while True:
-			if chan.exit_status_ready():
-				break
-			try:
-				c = chan.recv(1)
-			except socket.timeout:
-				break
-			else:
-				if len(c) == 0:
-					raise SSH_Exception('Channel closed during recv()')
-				return c
-		return None
-
-	def _gets(self):
-		s = []
-		while True:
-			c = self._getc(self.channel)
-			if c is None:
-				break
-			s.append(c)
-			if c == '\n':
-				break
-		return ''.join(s)
-
-
-class ShellPrompt(object):
-	"""Prompt handling class for Shell"""
-	def __init__(self, prompt=None):
-		self.prompts = {}
-		if prompt is not None:
-			self.add_prompt(prompt)
-
-	def __repr__(self):
-		return '{}.prompts={}'.format(type(self).__name__, repr(self.prompts))
-
-	def add_prompt(self, prompt):
-		if isinstance(prompt, basestring):
-			if prompt not in self.prompts:
-				self.prompts[prompt] = {
-					'prompt_type': basestring,
-					'prompt_value': prompt
-				}
-		elif isinstance(prompt, dict):
-			if 'prompt_type' in prompt and 'prompt_value' in prompt:
-				if prompt['prompt_value'] not in self.prompts:
-					self.prompts[prompt['prompt_value']] = prompt
-			else:
-				raise ValueError('Invalid prompt specified')
-		else:
-			raise TypeError('Unsupported prompt type - [{}]'.format(type(prompt)))
-
-	def is_prompt(self, candidate_prompt):
-		if candidate_prompt in self.prompts and \
-				self.prompts[candidate_prompt]['prompt_type'] is basestring:
-			return True
-		for prompt in self.prompts.values():
-			if prompt['prompt_type'] is basestring:
-				continue
-			elif prompt['prompt_type'] == 'regexp':
-				if re.match(prompt['prompt_regexp'], candidate_prompt):
-					return True
-			else:
-				raise TypeError(
-					'Unsupported prompt type - [{}]'.format(prompt['prompt_type'])
-				)
-		return False
-
-	@staticmethod
-	def regexp_prompt(re_prompt):
-		return {
-			'prompt_type': 'regexp',
-			'prompt_value': re_prompt,
-			'prompt_regexp': re.compile(re_prompt)
-		}
-
-
-class SSH_Exception(Exception):
-	"""Base exception class"""
-	pass
-
-
-class AuthenticationError(SSH_Exception):
-	"""Class for authentication errors"""
-	pass
-
-
-class ConnectError(SSH_Exception):
-	"""Class for connect errors"""
-	pass
