@@ -1,3 +1,5 @@
+from .. import exception
+
 class BaseClient(object):
 	def __del__(self):
 		self.disconnect()
@@ -10,15 +12,19 @@ class BaseClient(object):
 
 	def __init__(self, *args, **kwargs):
 		assert 'host' in kwargs, 'No host specified'
+		self.snmp_client = None
+		self.ssh_client = None
 
 	def can_snmp(self):
 		if hasattr(self, 'snmp_client'):
-			return True
+			if self.snmp_client is not None:
+				return True
 		return False
 
 	def can_ssh(self):
 		if hasattr(self, 'ssh_client'):
-			return True
+			if self.ssh_client is not None:
+				return True
 		return False
 
 	def cli_command(self, command, *args, **kwargs):
@@ -47,17 +53,16 @@ class BaseClient(object):
 
 	def snmp_get(self, oid):
 		if not self.can_snmp():
-			raise Client_Exception('No SNMP client')
+			raise SNMP_Exception('No SNMP client')
 		return self.snmp_client.get_oid(self.snmp_client.format_oid(oid))
 
 	def snmp_walk(self, oid):
 		if not self.can_snmp():
-			raise Client_Exception('No SNMP client')
+			raise SNMP_Exception('No SNMP client')
 		return self.snmp_client.walk_oids([self.snmp_client.format_oid(oid)])
 
 	def software_version(self):
 		raise NotImplementedError
 
-
-class Client_Exception(Exception):
-	pass
+	def vendor():
+		raise NotImplementedError
