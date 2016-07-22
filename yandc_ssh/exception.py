@@ -1,25 +1,35 @@
 """Exceptions for the SSH package"""
 
 class SSH_Exception(Exception):
-    """SSH base exception class"""
+    """Base exception class"""
     pass
 
 
 class AuthenticationError(SSH_Exception):
-    """Class for authentication errors"""
+    """Problems with authentication"""
     pass
 
 
 class ConnectError(SSH_Exception):
-    """Class for connect errors"""
-    pass
-
-
-class GeneralError(SSH_Exception):
-    """Class for general errors"""
+    """Client connect errors"""
     pass
 
 
 class PromptError(SSH_Exception):
-    """Class for prompt errors"""
+    """Prompt related errors"""
+    pass
+
+
+class RecvError(SSH_Exception):
+    """Channel receive errors"""
+    pass
+
+
+class ResponseError(SSH_Exception):
+    """CLI response errors"""
+    pass
+
+
+class SendError(SSH_Exception):
+    """Channel send errors"""
     pass
