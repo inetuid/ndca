@@ -59,9 +59,13 @@ class Client(object):
 			self.paramiko_transport = paramiko_transport
 
 	def __repr__(self):
-		return 'ssh.Client({})'.format(repr(self.paramiko_transport))
+		return 'ssh.Client @ {} ({})'.format(
+			hex(long(id(self)) & long(0xffffffff)),
+			repr(self.paramiko_transport)
+	)
 
 	def channel(self):
+		"""Return a channel object"""
 		if 'get_banner' in dir(self.paramiko_transport):
 			pass
 		return self.paramiko_transport.open_session()
@@ -77,14 +81,21 @@ class Client(object):
 		chan.set_combine_stderr(True)
 		chan.exec_command(command, *args)
 		output = chan.makefile('rb')
-		return [Shell.on_output_line(output_line) for output_line in output.readlines()]
+		exec_output = []
+		for output_line in output.readlines():
+			exec_output.append(output_line.rstrip('\r\n'))
+		chan.shutdown(2)
+		chan.close()
+		return exec_output
 
 	def is_active(self):
+		"""Is the underlying transport active"""
 		if hasattr(self, 'paramiko_transport'):
 			return self.paramiko_transport.is_active()
 		return False
 
 	def on_connect(self, paramiko_transport):
+		"""Override to run on connect()"""
 		pass
 
 	def sftp_client(self):
