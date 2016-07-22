@@ -1,3 +1,3 @@
 class SNMP_Exception(Exception):
-    """Base SNMP error class"""
+    """Base error class"""
     pass
