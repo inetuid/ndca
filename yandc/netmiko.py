@@ -1,4 +1,8 @@
-from yandc import *
+from yandc_cumulus import Client as CL_Client
+from yandc_eos import Client as EOS_Client
+from yandc_ios import Client as IOS_Client
+from yandc_iosxr import Client as XR_Client
+from yandc_ros import Client as ROS_Client
 
 
 class ConnectHandler(object):
@@ -13,16 +17,15 @@ class ConnectHandler(object):
         elif 'ip' in kwargs:
             client_kwargs['host'] = kwargs['ip']
         else:
-            raise ValueError('Host or IP not specified')
+            raise ValueError('No Host or IP specified')
 
         if 'username' in kwargs:
             client_kwargs['username'] = kwargs['username']
-
         if 'password' in kwargs:
             client_kwargs['password'] = kwargs['password']
-
         if 'port' in kwargs:
             client_kwargs['ssh_port'] = kwargs['port']
+        print client_kwargs
 
         if kwargs['device_type'] == 'arista':
             self.yandc_client = EOS_Client(**client_kwargs)
@@ -41,7 +44,7 @@ class ConnectHandler(object):
         return self.yandc_client.in_configure_mode()
 
     def config_mode(self, config_command='', *args):
-        return NotImplementedError('config_mode()')
+        return NotImplementedError
 
     def disconnect(self):
         if hasattr(self, 'yandc_client'):
@@ -52,7 +55,7 @@ class ConnectHandler(object):
         return ''
 
     def exit_config_mode(self, exit_config, *args):
-        return NotImplementedError('exit_config_mode()')
+        return NotImplementedError
 
     def find_prompt(self, *args):
         return self.yandc_client.ssh_shell.last_prompt
@@ -61,7 +64,7 @@ class ConnectHandler(object):
         return self.yandc_client.cli_command(command)
 
     def send_config_from_file(self, config_file, **kwargs):
-        with open(config_file, 'rb') as f:
+        with open(config_file, 'rU') as f:
             self.send_config_set(f.read().splitlines())
 
     def send_config_set(self, config_commands, *args):
