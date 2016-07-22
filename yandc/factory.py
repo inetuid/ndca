@@ -1,16 +1,18 @@
-from vendor.base import BaseClient
-import snmp
-from vendor import *
+import yandc_base as base
+import yandc_snmp as snmp
+from yandc_eos import Client as EOS_Client
+from yandc_ios import Client as IOS_Client
+from yandc_ros import Client as ROS_Client
 
 
 class Client(object):
     def __new__(cls, *args, **kwargs):
         assert 'host' in kwargs, 'No host specified'
 
-        grouped_kwargs = BaseClient.group_kwargs('snmp_', **kwargs)
+        grouped_kwargs = base.Utils.group_kwargs('snmp_', **kwargs)
 
         if 'snmp_' not in grouped_kwargs:
-            raise ClientError('No SNMP details specified')
+            raise base.ClientError('No SNMP details specified')
 
         vendor, sys_object_id = snmp.Client(
             kwargs['host'],
@@ -26,4 +28,4 @@ class Client(object):
         elif ROS_Client.is_mikrotik(sys_object_id):
             return ROS_Client(*args, **kwargs)
         else:
-            raise ClientError('No driver for vendor')
+            raise base.ClientError('No driver for vendor')
