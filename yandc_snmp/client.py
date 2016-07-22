@@ -41,7 +41,11 @@ class Client(object):
 		self._authdata = cmdgen.CommunityData('securityIndex', community)
 
 	def __repr__(self):
-		return 'snmp.Client({}, {})'.format(repr(self._transport), repr(self._authdata))
+		return 'snmp.Client @ {} ({}, {})'.format(
+			hex(long(id(self)) & long(0xffffffff)),
+			repr(self._transport),
+			repr(self._authdata)
+		)
 
 	def bgpIdentifier(self):
 		return self.get_oid((1, 3, 6, 1, 2, 1, 15, 4, 0))
