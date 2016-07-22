@@ -1,6 +1,7 @@
-from .. import exception
+from .exception import ClientError
 
-class BaseClient(object):
+
+class Client(object):
 	def __del__(self):
 		self.disconnect()
 
@@ -39,30 +40,18 @@ class BaseClient(object):
 				self.ssh_client.disconnect()
 			del self.ssh_client
 
-	@staticmethod
-	def group_kwargs(*groups, **kwargs):
-		grouped_kwargs = {}
-		for key, value in kwargs.iteritems():
-			for group in groups:
-				group_length = len(group)
-				if key.startswith(group):
-					if group not in grouped_kwargs:
-						grouped_kwargs[group] = {}
-					grouped_kwargs[group][key[group_length:]] = value
-		return grouped_kwargs
-
 	def snmp_get(self, oid):
 		if not self.can_snmp():
-			raise SNMP_Exception('No SNMP client')
+			raise ClientError('No SNMP client')
 		return self.snmp_client.get_oid(self.snmp_client.format_oid(oid))
 
 	def snmp_walk(self, oid):
 		if not self.can_snmp():
-			raise SNMP_Exception('No SNMP client')
+			raise ClientError('No SNMP client')
 		return self.snmp_client.walk_oids([self.snmp_client.format_oid(oid)])
 
 	def software_version(self):
 		raise NotImplementedError
 
-	def vendor():
+	def vendor(self):
 		raise NotImplementedError
