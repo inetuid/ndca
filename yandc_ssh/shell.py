@@ -1,10 +1,11 @@
 """Shell class for SSH Client"""
 
-import re
 import socket
 #
-from .exception import GeneralError, PromptError
-from .client import Client as SSH_Client
+from .exception import PromptError, RecvError, ResponseError, SendError
+from .client import Client
+from .shell_prompt import ShellPrompt
+from .utils import Utils
 
 
 class Shell(object):
@@ -18,18 +19,24 @@ class Shell(object):
     def __exit__(self, exception_type, exception_value, traceback):
         self.exit()
 
-    def __init__(self, ssh_client, shell_prompts, terminal_type='dumb'):
-        assert isinstance(ssh_client, SSH_Client)
+    def __init__(self, ssh_client, shell_prompts, optional_args=None):
+        assert isinstance(ssh_client, Client)
         assert isinstance(shell_prompts, ShellPrompt)
+        if optional_args is None:
+            optional_args = {}
 
         self.ssh_client = ssh_client
         self.shell_prompts = shell_prompts
         self.last_prompt = ''
 
         self.channel = ssh_client.channel()
-        self.channel.settimeout(0.2)
-#        self.channel.set_combine_stderr(True)
-        self.channel.get_pty(terminal_type)
+        self.channel.settimeout(optional_args.get('timeout', 0.2))
+        self.channel.set_combine_stderr(optional_args.get('combine_stderr', False))
+        self.channel.get_pty(
+            term=optional_args.get('terminal_type', 'dumb'),
+            width=optional_args.get('terminal_width', 80),
+            height=optional_args.get('terminal_height', 25)
+        )
         self.channel.invoke_shell()
 
         banner, retries_left = self.read_until_prompt()
@@ -37,31 +44,34 @@ class Shell(object):
             if len(banner) == 0:
                 raise PromptError('Cannot auto-detect prompt')
             timeout_prompt = banner.pop()
-            print '*{}*'.format(timeout_prompt)
             self.shell_prompts.add_prompt(timeout_prompt)
             self.command('\n', 5)
         self.on_banner(banner)
 
+        for command in optional_args.get('initial_commands', []):
+            self.command(command)
+
     def __repr__(self):
-        return 'ssh.Shell({}) @ {}'.format(
-            repr(self.ssh_client),
-            hex(long(id(self)) & long(0xffffffff))
+        return 'ssh.Shell @ {} ({})'.format(
+            hex(long(id(self)) & long(0xffffffff)),
+            repr(self.ssh_client)
         )
 
+#    @Utils.debug
     def command(self, command, prompt_retries=40):
         send_command = command.rstrip('\r\n')
         if self.channel.send(send_command + '\r') != (len(send_command) + 1):
-            raise GeneralError('Did not send all of command')
+            raise SendError('Did not send all of command')
         if prompt_retries:
             while range(10, 0, -1):
                 raw_output = self._gets()
                 if raw_output != '':
                     output_line = self.on_output_line(raw_output)
                     if output_line != send_command:
-                        raise GeneralError('Command echo mismatch')
+                        raise ResponseError('Command echo mismatch')
                     break
             else:
-                raise GeneralError('Command not echoed')
+                raise ResponseError('Command not echoed')
         output, retries_left = self.read_until_prompt(prompt_retries)
         if prompt_retries != 0 and retries_left == 0:
             raise PromptError('Prompt not seen')
@@ -70,15 +80,14 @@ class Shell(object):
     def exit(self, exit_command='exit'):
         if hasattr(self, 'channel') and self.ssh_client.is_active():
             self.channel.send(exit_command)
+            self.channel.shutdown(2)
             self.channel.close()
-            print 'Deleting channel...'
             del self.channel
 
     def on_banner(self, banner):
         pass
 
-    @staticmethod
-    def on_output_line(output_line):
+    def on_output_line(self, output_line):
         return output_line.rstrip('\r\n')
 
     def on_prompt(self, prompt):
@@ -112,7 +121,7 @@ class Shell(object):
                 break
             else:
                 if len(c) == 0:
-                    raise GeneralError('Channel closed during recv()')
+                    raise RecvError('Channel closed during recv()')
                 return c
         return None
 
@@ -126,54 +135,3 @@ class Shell(object):
             if c == '\n':
                 break
         return ''.join(s)
-
-
-class ShellPrompt(object):
-    """Prompt handling class for Shell"""
-    def __init__(self, prompt=None):
-        self.prompts = {}
-        if prompt is not None:
-            self.add_prompt(prompt)
-
-    def __repr__(self):
-        return '{}.prompts={}'.format(type(self).__name__, repr(self.prompts))
-
-    def add_prompt(self, prompt):
-        if isinstance(prompt, basestring):
-            if prompt not in self.prompts:
-                self.prompts[prompt] = {
-                    'prompt_type': basestring,
-                    'prompt_value': prompt
-                }
-        elif isinstance(prompt, dict):
-            if 'prompt_type' in prompt and 'prompt_value' in prompt:
-                if prompt['prompt_value'] not in self.prompts:
-                    self.prompts[prompt['prompt_value']] = prompt
-            else:
-                raise PromptError('Invalid prompt specified')
-        else:
-            raise PromptError('Unsupported prompt type - [{}]'.format(type(prompt)))
-
-    def is_prompt(self, candidate_prompt):
-        if candidate_prompt in self.prompts and \
-                self.prompts[candidate_prompt]['prompt_type'] is basestring:
-            return True
-        for prompt in self.prompts.values():
-            if prompt['prompt_type'] is basestring:
-                continue
-            elif prompt['prompt_type'] == 'regexp':
-                if re.match(prompt['prompt_regexp'], candidate_prompt):
-                    return True
-            else:
-                raise PromptError(
-                    'Unsupported prompt type - [{}]'.format(prompt['prompt_type'])
-                )
-        return False
-
-    @staticmethod
-    def regexp_prompt(re_prompt):
-        return {
-            'prompt_type': 'regexp',
-            'prompt_value': re_prompt,
-            'prompt_regexp': re.compile(re_prompt)
-        }
