@@ -28,6 +28,8 @@ class Shell(object):
         self.ssh_client = ssh_client
         self.shell_prompts = shell_prompts
         self.last_prompt = ''
+        self.recv_bufsize = optional_args.get('recv_buffer_size', 4096)
+        self.line_separator = optional_args.get('line_separator', '\n')
 
         self.channel = ssh_client.channel()
         self.channel.settimeout(optional_args.get('timeout', 0.2))
@@ -57,23 +59,28 @@ class Shell(object):
             repr(self.ssh_client)
         )
 
-#    @Utils.debug
-    def command(self, command, prompt_retries=40):
+    def command(self, command, timeout_retries=40):
         send_command = command.rstrip('\r\n')
-        if self.channel.send(send_command + '\r') != (len(send_command) + 1):
-            raise SendError('Did not send all of command')
-        if prompt_retries:
-            while range(10, 0, -1):
-                raw_output = self._gets()
-                if raw_output != '':
-                    output_line = self.on_output_line(raw_output)
-                    if output_line != send_command:
-                        raise ResponseError('Command echo mismatch')
-                    break
-            else:
-                raise ResponseError('Command not echoed')
-        output, retries_left = self.read_until_prompt(prompt_retries)
-        if prompt_retries != 0 and retries_left == 0:
+#        if self.channel.send(send_command + '\r') != (len(send_command) + 1):
+#            raise SendError('Did not send all of command')
+        self.channel.sendall(send_command + '\r')
+#        if timeout_retries:
+#            while range(10, 0, -1):
+#                raw_output = self._gets()
+#                if raw_output != '':
+#                    output_line = self.on_output_line(raw_output)
+#                    if output_line != send_command:
+#                        raise ResponseError('Command echo mismatch')
+#                    break
+#            else:
+#                raise ResponseError('Command not echoed')
+        output, retries_left = self.read_until_prompt(timeout_retries)
+        if len(output) == 0:
+            raise ResponseError('Command not echoed')
+        if output[0] != send_command:
+            raise ResponseError('Command echo mismatch')
+        output.pop(0)
+        if timeout_retries != 0 and retries_left == 0:
             raise PromptError('Prompt not seen')
         return output
 
@@ -88,17 +95,44 @@ class Shell(object):
         pass
 
     def on_output_line(self, output_line):
-        return output_line.rstrip('\r\n')
+        return output_line.rstrip('\r')
 
     def on_prompt(self, prompt):
         pass
 
-    def read_until_prompt(self, prompt_retries=25):
+    def read_until_prompt(self, timeout_retries=25):
+        recv_buffer = ''
+        while timeout_retries > 0:
+            if self.channel.exit_status_ready():
+                break
+            if self.channel.recv_ready():
+                recv_bytes = self.channel.recv(self.recv_bufsize)
+            else:
+                try:
+                    recv_bytes = self.channel.recv(self.recv_bufsize)
+                except socket.timeout:
+                    timeout_retries -= 1
+                    continue
+            if len(recv_bytes) == 0:
+                raise RecvError('Channel closed during recv()')
+            recv_buffer += recv_bytes
+            separator_position = recv_buffer.rfind(self.line_separator)
+            if separator_position != -1:
+                candidate_prompt = self.on_output_line(recv_buffer[separator_position + 1:])
+                if self.shell_prompts.is_prompt(candidate_prompt):
+                    recv_buffer = recv_buffer[:separator_position]
+                    break
         output = []
-        while prompt_retries:
+        for raw_output in recv_buffer.split(self.line_separator):
+            output.append(self.on_output_line(raw_output))
+        return (output, timeout_retries)
+
+    def Xread_until_prompt(self, timeout_retries=25):
+        output = []
+        while timeout_retries > 0:
             raw_output = self._gets()
             if raw_output == '':
-                prompt_retries -= 1
+                timeout_retries -= 1
             else:
                 output_line = self.on_output_line(raw_output)
                 if self.shell_prompts.is_prompt(output_line):
@@ -106,7 +140,7 @@ class Shell(object):
                     self.on_prompt(output_line)
                     break
                 output.append(output_line)
-        return (output, prompt_retries)
+        return (output, timeout_retries)
 
     @staticmethod
     def _getc(chan):
