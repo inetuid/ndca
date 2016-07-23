@@ -12,7 +12,7 @@ class Utils(object):
                     args,
                     kwargs,
                     result,
-                    result.encode('hex') if isinstance(result, str) else ''
+                    result.encode('hex') if isinstance(result, basestring) else ''
                 )
             )
             return result

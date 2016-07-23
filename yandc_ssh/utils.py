@@ -7,10 +7,10 @@ class Utils(object):
         def func_wrapper(*args, **kwargs):
             result = func(*args, **kwargs)
             hex_result = ''
-            if isinstance(result, str):
+            if isinstance(result, basestring):
                 hex_result = result.encode('hex')
             elif isinstance(result, list):
-                if len(result) == 1 and isinstance(result[0], str):
+                if len(result) == 1 and isinstance(result[0], basestring):
                     hex_result = result[0].encode('hex')
             sys.stderr.write(
                 'DEBUG: {}({}, {}) = [{}][{}]\n'.format(
