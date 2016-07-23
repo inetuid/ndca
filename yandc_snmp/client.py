@@ -303,7 +303,7 @@ class Client(object):
 
     @staticmethod
     def format_oid(oid):
-        if isinstance(oid, str):
+        if isinstance(oid, basestring):
             return tuple(map(int, oid.lstrip('.').split('.')))
         elif isinstance(oid, tuple):
             return oid
