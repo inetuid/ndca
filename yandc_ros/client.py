@@ -3,15 +3,18 @@ import StringIO
 #
 import yandc_base as base
 try:
-    from .snmp import Client as SNMP_Client
-except ImportError:
-    HAVE_SNMP = False
-else:
     from yandc_snmp.exception import SNMP_Exception
     HAVE_SNMP = True
+except:
+    HAVE_SNMP = False
 import yandc_ssh as ssh
 #
 from .shell import Shell
+try:
+    from .snmp import Client as SNMP_Client
+    HAVE_SNMP = True
+except:
+    HAVE_SNMP = False
 from .utils import Utils
 
 try:
