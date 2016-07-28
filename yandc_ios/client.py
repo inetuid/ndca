@@ -1,7 +1,11 @@
 import re
 #
 import yandc_base as base
-import yandc_snmp as snmp
+try:
+    import yandc_snmp as snmp
+    HAVE_SNMP = True
+except:
+    HAVE_SNMP = False
 import yandc_ssh as ssh
 
 
@@ -11,7 +15,7 @@ class Client(base.Client):
 
         grouped_kwargs = base.Utils.group_kwargs('snmp_', 'ssh_', **kwargs)
 
-        if 'snmp_' in grouped_kwargs:
+        if HAVE_SNMP and 'snmp_' in grouped_kwargs:
             snmp_client = snmp.Client(kwargs['host'], **grouped_kwargs['snmp_'])
 
             try:
@@ -36,12 +40,12 @@ class Client(base.Client):
 
             shell_args = {
                 'combine_stderr': True,
-                'terminal_width': 160,
                 'initial_commands': [
                     'terminal length 0',
                     'terminal no monitor',
                     'terminal width 160',
                 ],
+                'terminal_width': 160,
             }
             self.ssh_shell = ssh.Shell(self.ssh_client, shell_prompt, optional_args=shell_args)
 #            self.ssh_shell.channel.set_combine_stderr(True)
