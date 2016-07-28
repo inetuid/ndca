@@ -1,21 +1,23 @@
 import json
 #
+try:
+    import pyeapiZ
+    HAVE_APILIB = True
+except:
+    HAVE_APILIB = False
 import yandc_base as base
+try:
+    from yandc_snmp.exception import SNMP_Exception
+    HAVE_SNMP = True
+except:
+    HAVE_SNMP = False
 import yandc_ssh as ssh
 #
 try:
     from .snmp import Client as SNMP_Client
-except ImportError:
-    HAVE_SNMP = False
-else:
     HAVE_SNMP = True
-
-try:
-    import pyeapi
-except ImportError:
-    HAVE_APILIB = False
-else:
-    HAVE_APILIB = True
+except:
+    HAVE_SNMP = False
 
 
 class Client(base.Client):
@@ -28,7 +30,7 @@ class Client(base.Client):
             snmp_client = SNMP_Client(kwargs['host'], **grouped_kwargs['snmp_'])
             try:
                 sys_object_id = snmp_client.sysObjectID()
-            except snmp.SNMP_Exception:
+            except SNMP_Exception:
                 pass
             else:
                 if not self.is_arista(sys_object_id):
@@ -65,13 +67,13 @@ class Client(base.Client):
 
             shell_args = {
                 'combine_stderr': True,
-                'terminal_width': 160,
                 'initial_commands': [
                     'terminal dont-ask',
                     'terminal length 0',
                     'no terminal monitor',
                     'terminal width 160',
                 ],
+                'terminal_width': 160,
             }
             self.ssh_shell = ssh.Shell(self.ssh_client, shell_prompt, optional_args=shell_args)
 #            self.ssh_shell.channel.set_combine_stderr(True)
