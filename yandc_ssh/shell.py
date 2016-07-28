@@ -68,7 +68,7 @@ class Shell(object):
 #            while range(10, 0, -1):
 #                raw_output = self._gets()
 #                if raw_output != '':
-#                    output_line = self.on_output_line(raw_output)
+#                    output_line = self.tidy_output_line(raw_output)
 #                    if output_line != send_command:
 #                        raise ResponseError('Command echo mismatch')
 #                    break
@@ -94,9 +94,6 @@ class Shell(object):
     def on_banner(self, banner):
         pass
 
-    def on_output_line(self, output_line):
-        return output_line.rstrip('\r')
-
     def on_prompt(self, prompt):
         pass
 
@@ -118,13 +115,15 @@ class Shell(object):
             recv_buffer += recv_bytes
             separator_position = recv_buffer.rfind(self.line_separator)
             if separator_position != -1:
-                candidate_prompt = self.on_output_line(recv_buffer[separator_position + 1:])
+                candidate_prompt = self.tidy_output_line(recv_buffer[separator_position + 1:])
                 if self.shell_prompts.is_prompt(candidate_prompt):
+                    self.last_prompt = candidate_prompt
+                    self.on_prompt(self.last_prompt)
                     recv_buffer = recv_buffer[:separator_position]
                     break
         output = []
-        for raw_output in recv_buffer.split(self.line_separator):
-            output.append(self.on_output_line(raw_output))
+        for output_line in recv_buffer.split(self.line_separator):
+            output.append(self.tidy_output_line(output_line))
         return (output, timeout_retries)
 
     def Xread_until_prompt(self, timeout_retries=25):
@@ -134,13 +133,16 @@ class Shell(object):
             if raw_output == '':
                 timeout_retries -= 1
             else:
-                output_line = self.on_output_line(raw_output)
+                output_line = self.tidy_output_line(raw_output)
                 if self.shell_prompts.is_prompt(output_line):
                     self.last_prompt = output_line
-                    self.on_prompt(output_line)
+                    self.on_prompt(self.last_prompt)
                     break
                 output.append(output_line)
         return (output, timeout_retries)
+
+    def tidy_output_line(self, output_line):
+        return output_line.rstrip('\r')
 
     @staticmethod
     def _getc(chan):

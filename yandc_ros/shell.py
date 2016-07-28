@@ -8,9 +8,9 @@ class Shell(BaseShell):
         self.output_re_sub_regexp = re.compile(r'{}\[(9999B|c)'.format(chr(0x1B)))
         super(Shell, self).__init__(*args, **kwargs)
 
-    def on_output_line(self, *args, **kwargs):
+    def tidy_output_line(self, *args, **kwargs):
         return re.sub(
             self.output_re_sub_regexp,
             '',
-            super(Shell, self).on_output_line(*args, **kwargs)
+            super(Shell, self).tidy_output_line(*args, **kwargs)
         ).lstrip('\r')
